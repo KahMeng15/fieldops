@@ -1,38 +1,26 @@
 import React, { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { 
   Building2, 
   MapPin, 
   Server, 
   Plus, 
   Search, 
+  ExternalLink, 
   Globe, 
   Mail, 
-  ChevronRight,
-  Trash2,
-  Pencil,
-  MoreVertical
+  ChevronRight
 } from 'lucide-react';
-import { getCompanies, deleteCompany, type Company } from '../api';
+import { getCompanies, type Company } from '../api';
 import NewCompanyModal from '../components/NewCompanyModal';
-import EditCompanyModal from '../components/EditCompanyModal';
+import NewLocationModal from '../components/NewLocationModal';
 
 export const CompaniesPage: React.FC = () => {
-  const navigate = useNavigate();
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [isCompanyModalOpen, setIsCompanyModalOpen] = useState(false);
-  const [editingCompany, setEditingCompany] = useState<Company | null>(null);
-  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
-
-  // Close open menu on outside click
-  useEffect(() => {
-    const handleClickOutside = () => setOpenMenuId(null);
-    window.addEventListener('click', handleClickOutside);
-    return () => window.removeEventListener('click', handleClickOutside);
-  }, []);
+  const [locationModalTargetCompany, setLocationModalTargetCompany] = useState<string | null>(null);
 
   const fetchCompanies = async () => {
     try {
@@ -43,21 +31,6 @@ export const CompaniesPage: React.FC = () => {
       console.error('Failed to load companies', err);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleDeleteCompany = async (companyId: string, companyName: string) => {
-    if (!window.confirm(`Are you sure you want to delete "${companyName}"? This will also remove its associated locations and deployments.`)) {
-      return;
-    }
-    try {
-      setDeletingId(companyId);
-      await deleteCompany(companyId);
-      setCompanies(prev => prev.filter(c => c.id !== companyId));
-    } catch (err: any) {
-      alert(err?.response?.data?.detail || 'Failed to delete company. You may not have sufficient permissions.');
-    } finally {
-      setDeletingId(null);
     }
   };
 
@@ -145,51 +118,29 @@ export const CompaniesPage: React.FC = () => {
               <div className="p-5 space-y-4">
                 {/* Header */}
                 <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <Link
-                      to={`/companies/${company.id}`}
-                      className="font-bold text-slate-900 hover:text-blue-600 text-base line-clamp-1 transition-colors"
-                    >
-                      {company.name}
-                    </Link>
-                    <span className="text-[11px] text-slate-400">
-                      Added {new Date(company.created_at).toLocaleDateString()}
-                    </span>
+                  <div className="flex items-center space-x-3">
+                    <div className="w-10 h-10 rounded-lg bg-blue-50 text-blue-700 border border-blue-100 flex items-center justify-center font-bold text-base group-hover:bg-blue-600 group-hover:text-white transition-colors shrink-0">
+                      {company.name.charAt(0).toUpperCase()}
+                    </div>
+                    <div>
+                      <Link
+                        to={`/companies/${company.id}`}
+                        className="font-bold text-slate-900 hover:text-blue-600 text-base line-clamp-1 transition-colors"
+                      >
+                        {company.name}
+                      </Link>
+                      <span className="text-[11px] text-slate-400">
+                        Added {new Date(company.created_at).toLocaleDateString()}
+                      </span>
+                    </div>
                   </div>
-                  <div className="flex items-center space-x-1 shrink-0">
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setEditingCompany(company);
-                      }}
-                      className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors cursor-pointer"
-                      title="Edit company"
-                    >
-                      <Pencil className="w-4 h-4" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        handleDeleteCompany(company.id, company.name);
-                      }}
-                      disabled={deletingId === company.id}
-                      className="inline-flex items-center p-1.5 text-red-600 hover:bg-red-50 rounded-md transition-colors disabled:opacity-50 cursor-pointer"
-                      title="Delete Company"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                    <Link
-                      to={`/companies/${company.id}`}
-                      className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-slate-50 rounded-md transition-colors"
-                      title="View company details"
-                    >
-                      <ExternalLink className="w-4 h-4" />
-                    </Link>
-                  </div>
+                  <Link
+                    to={`/companies/${company.id}`}
+                    className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-slate-50 rounded-md transition-colors"
+                    title="View company details"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                  </Link>
                 </div>
 
                 {/* Description */}
@@ -285,15 +236,6 @@ export const CompaniesPage: React.FC = () => {
         onClose={() => setLocationModalTargetCompany(null)}
         onSuccess={() => {
           fetchCompanies();
-        }}
-      />
-
-      <EditCompanyModal
-        isOpen={Boolean(editingCompany)}
-        company={editingCompany}
-        onClose={() => setEditingCompany(null)}
-        onSuccess={(updated) => {
-          setCompanies(prev => prev.map(c => c.id === updated.id ? { ...c, ...updated } : c));
         }}
       />
     </div>

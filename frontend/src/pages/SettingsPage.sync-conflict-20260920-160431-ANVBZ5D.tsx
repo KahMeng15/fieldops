@@ -15,13 +15,14 @@ import {
   Sparkles,
   ArrowUp,
   ArrowDown,
+  Info,
   ChevronDown,
   ChevronUp,
   Database,
   ChevronsDown,
   ChevronsUp
 } from 'lucide-react';
-import { Link, useBlocker } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { 
   getDeploymentFieldSettings, 
   updateDeploymentFieldSettings, 
@@ -45,28 +46,6 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [hasChanges, setHasChanges] = useState(false);
 
-  // Unsaved changes blocker for in-app navigation
-  const blocker = useBlocker(
-    ({ currentLocation, nextLocation }) =>
-      isAdmin && hasChanges && currentLocation.pathname !== nextLocation.pathname
-  );
-
-  // Unsaved changes warning for tab close / refresh
-  useEffect(() => {
-    if (!isAdmin) return;
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (hasChanges) {
-        e.preventDefault();
-        e.returnValue = '';
-        return '';
-      }
-    };
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-    };
-  }, [isAdmin, hasChanges]);
-
   // Collapsed state map: key -> boolean (true = collapsed/minimized, false = expanded)
   const [collapsedCards, setCollapsedCards] = useState<Record<string, boolean>>({});
 
@@ -82,8 +61,6 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
   const [newFieldOptionInput, setNewFieldOptionInput] = useState('');
   const [newFieldDefault, setNewFieldDefault] = useState('');
   const [newFieldRequired, setNewFieldRequired] = useState(false);
-  const [newFieldAllowOther, setNewFieldAllowOther] = useState(true);
-  const [newFieldOtherPlaceholder, setNewFieldOtherPlaceholder] = useState('');
 
   // User Settings State
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -227,7 +204,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
         fields: prev.fields.map(f => {
           if (f.key === fieldKey) {
             const updatedOpts = (f.options || []).filter(o => o !== optionToRemove);
-            const newDefault = f.default_value === optionToRemove ? '' : f.default_value;
+            const newDefault = f.default_value === optionToRemove ? (updatedOpts[0] || '') : f.default_value;
             return { ...f, options: updatedOpts, default_value: newDefault };
           }
           return f;
@@ -287,8 +264,6 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
       required: newFieldRequired,
       default_value: newFieldDefault,
       options: newFieldType === 'select' ? newFieldOptions : undefined,
-      allow_other: newFieldType === 'select' ? newFieldAllowOther : undefined,
-      other_placeholder: newFieldType === 'select' ? newFieldOtherPlaceholder : undefined,
       system_fixed: false,
       description: 'Custom user-defined field'
     };
@@ -310,8 +285,6 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
     setNewFieldOptionInput('');
     setNewFieldDefault('');
     setNewFieldRequired(false);
-    setNewFieldAllowOther(true);
-    setNewFieldOtherPlaceholder('');
     setHasChanges(true);
   };
 
@@ -424,7 +397,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
 
       {/* ADMIN SETTINGS VIEW */}
       {isAdmin && (
-        <div className="space-y-5">
+        <div className="space-y-6">
           {/* Subheader bar */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-slate-900 text-white p-4 sm:p-5 rounded-xl shadow-md">
             <div>
@@ -433,7 +406,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
                 <h2 className="text-lg font-bold">Deployment Record Fields Manager</h2>
               </div>
               <p className="text-xs text-slate-400 mt-1 max-w-xl">
-                Customize field display names, database columns, enable/disable status, display sequence, default values, and &ldquo;Other&rdquo; write-in options.
+                Customize field display names, database columns, enable/disable status, display sequence, and default values.
               </p>
             </div>
 
@@ -471,17 +444,20 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
             </div>
           </div>
 
-          {/* Clean Top Toolbar: Field count and Expand/Collapse Controls (Note card removed) */}
-          <div className="flex items-center justify-between px-1">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-              {settings?.fields.length || 0} Configured Fields
-            </span>
+          {/* Quick Toolbar: View mode toggles and info */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-white border border-slate-200 rounded-xl">
+            <div className="flex items-center space-x-2 text-xs text-slate-500">
+              <Info className="w-4 h-4 text-blue-600 shrink-0" />
+              <span>
+                Click any card or the chevron button to expand/minimize. Use <strong>Enabled</strong> / <strong>Disabled</strong> to toggle field visibility on deployment forms.
+              </span>
+            </div>
 
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-2 shrink-0">
               <button
                 type="button"
                 onClick={handleCollapseAll}
-                className="flex items-center space-x-1 px-2.5 py-1 text-xs font-medium text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors cursor-pointer shadow-2xs"
+                className="flex items-center space-x-1 px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
                 title="Minimize all field cards"
               >
                 <ChevronsUp className="w-3.5 h-3.5" />
@@ -490,7 +466,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
               <button
                 type="button"
                 onClick={handleExpandAll}
-                className="flex items-center space-x-1 px-2.5 py-1 text-xs font-medium text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors cursor-pointer shadow-2xs"
+                className="flex items-center space-x-1 px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
                 title="Expand all field cards"
               >
                 <ChevronsDown className="w-3.5 h-3.5" />
@@ -557,7 +533,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
                           </div>
                         </div>
 
-                        {/* Title, Column Key, Type Badge & Badges */}
+                        {/* Title, Column Key, and Type Badge */}
                         <div className="min-w-0 truncate">
                           <div className="flex items-center space-x-2 flex-wrap gap-y-1">
                             <span className="font-semibold text-slate-900 text-sm sm:text-base truncate">
@@ -570,11 +546,6 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
                             <span className="text-[10px] font-semibold px-2 py-0.5 bg-blue-50 text-blue-700 rounded border border-blue-200 uppercase tracking-wide">
                               {field.type}
                             </span>
-                            {field.allow_other && (
-                              <span className="text-[10px] font-semibold px-1.5 py-0.5 bg-purple-50 text-purple-700 rounded border border-purple-200">
-                                Allows &ldquo;Other&rdquo;
-                              </span>
-                            )}
                             {isFixed && (
                               <span className="text-[10px] font-semibold px-1.5 py-0.5 bg-amber-50 text-amber-700 rounded border border-amber-200 flex items-center space-x-1">
                                 <Lock className="w-2.5 h-2.5" />
@@ -585,7 +556,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
                           {isCollapsed && (
                             <p className="text-[11px] text-slate-400 truncate mt-0.5">
                               {isSelect 
-                                ? `${field.options?.length || 0} options${field.allow_other ? ' + Other' : ''} • Default: "${field.default_value || 'None'}"`
+                                ? `${field.options?.length || 0} options • Default: "${field.default_value || 'None'}"`
                                 : field.default_value ? `Default: "${field.default_value}"` : 'No default value set'}
                             </p>
                           )}
@@ -721,9 +692,6 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
                                     {opt} (Default)
                                   </option>
                                 ))}
-                                {field.allow_other && (
-                                  <option value="Other">Other (Custom Write-in)</option>
-                                )}
                               </select>
                             ) : (
                               <input
@@ -766,8 +734,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
 
                         {/* Selectable Options Manager (for select fields) */}
                         {isSelect && (
-                          <div className="pt-3 border-t border-slate-200/70 space-y-3">
-                            <div className="flex items-center justify-between">
+                          <div className="pt-3 border-t border-slate-200/70">
+                            <div className="flex items-center justify-between mb-2">
                               <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider">
                                 Allowed Values / Options ({field.options?.length || 0})
                               </label>
@@ -777,7 +745,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
                             </div>
 
                             {/* Option Chips */}
-                            <div className="flex flex-wrap gap-2 mb-2">
+                            <div className="flex flex-wrap gap-2 mb-3">
                               {(field.options || []).map((option) => {
                                 const isCurrentDefault = field.default_value === option;
                                 return (
@@ -806,12 +774,6 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
                                   </span>
                                 );
                               })}
-
-                              {field.allow_other && (
-                                <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold bg-purple-50 text-purple-700 border border-purple-300 border-dashed">
-                                  + &ldquo;Other&rdquo; (Custom Write-in)
-                                </span>
-                              )}
                             </div>
 
                             {/* Add Option Input */}
@@ -839,36 +801,6 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
                                 <Plus className="w-3.5 h-3.5" />
                                 <span>Add Option</span>
                               </button>
-                            </div>
-
-                            {/* Definition of "Other" option / write-in field */}
-                            <div className="mt-3 pt-3 border-t border-slate-200/70 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3 rounded-lg border border-slate-200">
-                              <div>
-                                <label className="flex items-center space-x-2 text-xs font-semibold text-slate-800 cursor-pointer">
-                                  <input
-                                    type="checkbox"
-                                    checked={field.allow_other ?? false}
-                                    onChange={(e) => handleUpdateField(index, { allow_other: e.target.checked })}
-                                    className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
-                                  />
-                                  <span>Allow &ldquo;Other&rdquo; Custom Write-in</span>
-                                </label>
-                                <p className="text-[11px] text-slate-500 mt-0.5 ml-6">
-                                  Adds an &ldquo;Other&rdquo; choice to the dropdown so users can type a custom unlisted value.
-                                </p>
-                              </div>
-
-                              {field.allow_other && (
-                                <div className="sm:w-72">
-                                  <input
-                                    type="text"
-                                    value={field.other_placeholder || ''}
-                                    onChange={(e) => handleUpdateField(index, { other_placeholder: e.target.value })}
-                                    placeholder="Placeholder text (e.g. Please specify other...)"
-                                    className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 text-slate-800"
-                                  />
-                                </div>
-                              )}
                             </div>
                           </div>
                         )}
@@ -958,81 +890,57 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
                   </div>
 
                   {newFieldType === 'select' && (
-                    <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-3">
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-                          Initial Options
-                        </label>
-                        <div className="flex flex-wrap gap-1.5 mb-2">
-                          {newFieldOptions.map((opt) => (
-                            <span
-                              key={opt}
-                              className="inline-flex items-center space-x-1 px-2.5 py-1 rounded bg-white border border-slate-300 text-xs font-medium text-slate-700"
+                    <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-2">
+                      <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                        Initial Options
+                      </label>
+                      <div className="flex flex-wrap gap-1.5 mb-2">
+                        {newFieldOptions.map((opt) => (
+                          <span
+                            key={opt}
+                            className="inline-flex items-center space-x-1 px-2.5 py-1 rounded bg-white border border-slate-300 text-xs font-medium text-slate-700"
+                          >
+                            <span>{opt}</span>
+                            <button
+                              type="button"
+                              onClick={() => setNewFieldOptions((prev) => prev.filter((o) => o !== opt))}
+                              className="text-slate-400 hover:text-red-600 ml-1 cursor-pointer"
                             >
-                              <span>{opt}</span>
-                              <button
-                                type="button"
-                                onClick={() => setNewFieldOptions((prev) => prev.filter((o) => o !== opt))}
-                                className="text-slate-400 hover:text-red-600 ml-1 cursor-pointer"
-                              >
-                                &times;
-                              </button>
-                            </span>
-                          ))}
-                        </div>
+                              &times;
+                            </button>
+                          </span>
+                        ))}
+                      </div>
 
-                        <div className="flex items-center space-x-2 max-w-sm">
-                          <input
-                            type="text"
-                            placeholder="Add option..."
-                            value={newFieldOptionInput}
-                            onChange={(e) => setNewFieldOptionInput(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                e.preventDefault();
-                                if (newFieldOptionInput.trim()) {
-                                  setNewFieldOptions((prev) => [...prev, newFieldOptionInput.trim()]);
-                                  setNewFieldOptionInput('');
-                                }
-                              }
-                            }}
-                            className="flex-1 px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => {
+                      <div className="flex items-center space-x-2 max-w-sm">
+                        <input
+                          type="text"
+                          placeholder="Add option..."
+                          value={newFieldOptionInput}
+                          onChange={(e) => setNewFieldOptionInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
                               if (newFieldOptionInput.trim()) {
                                 setNewFieldOptions((prev) => [...prev, newFieldOptionInput.trim()]);
                                 setNewFieldOptionInput('');
                               }
-                            }}
-                            className="px-3 py-1.5 text-xs font-medium bg-slate-200 text-slate-700 hover:bg-slate-300 rounded-lg cursor-pointer"
-                          >
-                            Add
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Allow Other for custom field */}
-                      <div className="pt-2 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                        <label className="flex items-center space-x-2 text-xs font-medium text-slate-700 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={newFieldAllowOther}
-                            onChange={(e) => setNewFieldAllowOther(e.target.checked)}
-                            className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
-                          />
-                          <span>Allow &ldquo;Other&rdquo; custom write-in</span>
-                        </label>
-                        {newFieldAllowOther && (
-                          <input
-                            type="text"
-                            value={newFieldOtherPlaceholder}
-                            onChange={(e) => setNewFieldOtherPlaceholder(e.target.value)}
-                            placeholder="Placeholder for other..."
-                            className="sm:w-60 px-2 py-1 text-xs bg-white border border-slate-300 rounded"
-                          />
-                        )}
+                            }
+                          }}
+                          className="flex-1 px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (newFieldOptionInput.trim()) {
+                              setNewFieldOptions((prev) => [...prev, newFieldOptionInput.trim()]);
+                              setNewFieldOptionInput('');
+                            }
+                          }}
+                          className="px-3 py-1.5 text-xs font-medium bg-slate-200 text-slate-700 hover:bg-slate-300 rounded-lg cursor-pointer"
+                        >
+                          Add
+                        </button>
                       </div>
                     </div>
                   )}
@@ -1067,42 +975,6 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
               )}
             </div>
           )}
-        </div>
-      )}
-
-      {/* Unsaved Changes Confirmation Modal */}
-      {blocker.state === 'blocked' && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
-          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-md w-full p-6 animate-in zoom-in-95 duration-150">
-            <div className="flex items-center space-x-3 mb-4">
-              <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center text-amber-600 shrink-0">
-                <AlertCircle className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-base font-bold text-slate-900">Unsaved Changes</h3>
-                <p className="text-xs text-slate-500">You have unsaved changes in deployment settings.</p>
-              </div>
-            </div>
-            <p className="text-sm text-slate-600 mb-6">
-              Are you sure you want to leave this page? Any unsaved modifications to deployment fields, database column names, or field ordering will be discarded.
-            </p>
-            <div className="flex items-center justify-end space-x-3">
-              <button
-                type="button"
-                onClick={() => blocker.reset()}
-                className="px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
-              >
-                Stay on Page
-              </button>
-              <button
-                type="button"
-                onClick={() => blocker.proceed()}
-                className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg shadow-sm transition-all cursor-pointer"
-              >
-                Discard & Leave
-              </button>
-            </div>
-          </div>
         </div>
       )}
     </div>

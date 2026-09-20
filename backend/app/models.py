@@ -86,6 +86,7 @@ class Deployment(Base):
     customer_name = Column(String, index=True)
     location = Column(String)
     account_owner_id = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    account_owner = Column(String, nullable=True)
     deployment_type = Column(String)
     pre_poc_status = Column(String)
     poc_status = Column(String)
@@ -99,7 +100,7 @@ class Deployment(Base):
 
     company = relationship("Company", back_populates="deployments")
     location_rel = relationship("Location", back_populates="deployments")
-    account_owner = relationship("User", foreign_keys=[account_owner_id])
+    account_owner_user = relationship("User", foreign_keys=[account_owner_id])
     created_by = relationship("User", foreign_keys=[created_by_id])
     engineers = relationship("DeploymentEngineer", back_populates="deployment")
     loaned_items = relationship("LoanedItem", back_populates="deployment")

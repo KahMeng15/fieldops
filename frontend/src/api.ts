@@ -174,6 +174,7 @@ export interface DeploymentData {
   deployed_product?: string;
   deployment_date?: string;
   internal_group_name?: string;
+  account_owner?: string;
   deployment_type: 'Deployment' | 'POC';
   pre_poc_status?: string;
   poc_status?: string;

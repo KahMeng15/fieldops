@@ -18,6 +18,7 @@ import {
   Globe,
   FileText,
   Package,
+  User,
   ShieldCheck
 } from 'lucide-react';
 import { 
@@ -210,6 +211,12 @@ export const DeploymentDetailPage = () => {
               <MapPin className="w-3.5 h-3.5 text-slate-400" />
               <span>{deployment.location}</span>
             </span>
+            {deployment.account_owner && (
+              <span className="flex items-center space-x-1">
+                <User className="w-3.5 h-3.5 text-slate-400" />
+                <span>Account Owner: <strong className="text-slate-800 font-semibold">{deployment.account_owner}</strong></span>
+              </span>
+            )}
             {deployment.internal_group_name && (
               <span className="flex items-center space-x-1">
                 <Building2 className="w-3.5 h-3.5 text-slate-400" />

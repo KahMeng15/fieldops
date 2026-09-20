@@ -88,16 +88,6 @@ DEFAULT_DEPLOYMENT_SETTINGS: Dict[str, Any] = {
             "description": "Current progress or phase of the deployment"
         },
         {
-            "key": "account_owner",
-            "label": "Account Owner",
-            "type": "text",
-            "enabled": True,
-            "required": False,
-            "default_value": "",
-            "system_fixed": False,
-            "description": "Primary sales account manager, customer success lead, or client executive"
-        },
-        {
             "key": "notes",
             "label": "Notes & Technical Specs",
             "type": "textarea",
@@ -117,26 +107,18 @@ from app.models import Deployment
 
 def sync_database_columns(db: Session, settings_data: Dict[str, Any]):
     """Ensure every field key in settings exists as an actual column in PostgreSQL table deployments and on SQLAlchemy model."""
-    try:
-        existing_cols_res = db.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name = 'deployments'"))
-        existing_cols = {row[0] for row in existing_cols_res}
-    except Exception:
-        existing_cols = set()
-
     fields = settings_data.get("fields", [])
     for field in fields:
         col_name = field.get("key", "").strip()
         if col_name and re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', col_name):
-            if col_name not in existing_cols:
-                try:
-                    db.execute(text(f'ALTER TABLE deployments ADD COLUMN IF NOT EXISTS "{col_name}" VARCHAR;'))
-                    db.commit()
-                    existing_cols.add(col_name)
-                except Exception as e:
-                    db.rollback()
-                    print(f"Failed to ensure column {col_name}: {e}")
-            if not hasattr(Deployment, col_name):
-                setattr(Deployment, col_name, Column(String))
+            try:
+                db.execute(text(f'ALTER TABLE deployments ADD COLUMN IF NOT EXISTS "{col_name}" VARCHAR;'))
+                db.commit()
+                if not hasattr(Deployment, col_name):
+                    setattr(Deployment, col_name, Column(String))
+            except Exception as e:
+                db.rollback()
+                print(f"Failed to ensure column {col_name}: {e}")
 
 def sync_lookup_values(db: Session, settings_data: Dict[str, Any]):
     """Sync select options into lookup_categories and lookup_values tables."""
@@ -180,19 +162,11 @@ async def get_deployment_field_settings(
         db.add(setting_cat)
         db.commit()
         sync_lookup_values(db, DEFAULT_DEPLOYMENT_SETTINGS)
-        sync_database_columns(db, DEFAULT_DEPLOYMENT_SETTINGS)
         return DEFAULT_DEPLOYMENT_SETTINGS
 
     try:
         data = json.loads(setting_cat.description)
-        # Ensure any newly added default fields (e.g. account_owner) are present
-        existing_keys = {f.get("key") for f in data.get("fields", [])}
-        missing_defaults = [f for f in DEFAULT_DEPLOYMENT_SETTINGS.get("fields", []) if f.get("key") not in existing_keys]
-        if missing_defaults:
-            data["fields"].extend(missing_defaults)
-            setting_cat.description = json.dumps(data)
-            db.commit()
-            sync_database_columns(db, data)
+        sync_database_columns(db, data)
         return data
     except Exception:
         return DEFAULT_DEPLOYMENT_SETTINGS

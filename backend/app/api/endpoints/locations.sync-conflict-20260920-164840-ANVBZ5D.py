@@ -83,7 +83,6 @@ async def get_location(
     )
 
 @router.get("/{id}/deployments", response_model=List[DeploymentResponse])
-@router.get("/{id}/deployments/", response_model=List[DeploymentResponse])
 async def list_location_deployments(
     id: UUID,
     db: Session = Depends(get_db),
@@ -162,14 +161,6 @@ async def delete_location(
     loc = db.query(Location).filter(Location.id == id, Location.deleted_at == None).first()
     if not loc:
         raise HTTPException(404, "Location not found")
-    
-    now = datetime.utcnow()
-    loc.deleted_at = now
-
-    # Cascade soft delete to associated deployments
-    deps = db.query(Deployment).filter(Deployment.location_id == id, Deployment.deleted_at == None).all()
-    for dep in deps:
-        dep.deleted_at = now
-
+    loc.deleted_at = datetime.utcnow()
     db.commit()
     return None

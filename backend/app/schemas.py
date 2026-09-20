@@ -81,6 +81,7 @@ class DeploymentSchema(BaseModel):
     deployed_product: Optional[str] = "FieldOps Core Gateway"
     deployment_date: Optional[datetime] = None
     internal_group_name: Optional[str] = None
+    account_owner: Optional[str] = None
     deployment_type: Optional[str] = None
     pre_poc_status: Optional[str] = None
     poc_status: Optional[str] = None

@@ -211,26 +211,12 @@ async def delete_company(
     company = db.query(Company).filter(Company.id == id, Company.deleted_at == None).first()
     if not company:
         raise HTTPException(404, "Company not found")
-    
-    now = datetime.utcnow()
-    company.deleted_at = now
-
-    # Cascade soft delete to associated locations
-    locations = db.query(Location).filter(Location.company_id == id, Location.deleted_at == None).all()
-    for loc in locations:
-        loc.deleted_at = now
-
-    # Cascade soft delete to associated deployments
-    deps = db.query(Deployment).filter(Deployment.company_id == id, Deployment.deleted_at == None).all()
-    for dep in deps:
-        dep.deleted_at = now
-
+    company.deleted_at = datetime.utcnow()
     db.commit()
     return None
 
 # Location endpoints under company
 @router.get("/{id}/locations", response_model=List[LocationResponse])
-@router.get("/{id}/locations/", response_model=List[LocationResponse])
 async def list_company_locations(
     id: UUID,
     db: Session = Depends(get_db),
@@ -264,7 +250,6 @@ async def list_company_locations(
     return results
 
 @router.post("/{id}/locations", response_model=LocationResponse, status_code=201)
-@router.post("/{id}/locations/", response_model=LocationResponse, status_code=201)
 async def create_company_location(
     id: UUID,
     data: LocationCreate,

@@ -1,15 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Building2, Globe, Mail, Phone, FileText, CheckCircle2 } from 'lucide-react';
-import { createCompany, type Company } from '../api';
+import { updateCompany, type Company } from '../api';
 
-interface NewCompanyModalProps {
+interface EditCompanyModalProps {
   isOpen: boolean;
+  company: Company | null;
   onClose: () => void;
-  onSuccess: (company: Company) => void;
+  onSuccess: (updatedCompany: Company) => void;
 }
 
-export const NewCompanyModal: React.FC<NewCompanyModalProps> = ({
+export const EditCompanyModal: React.FC<EditCompanyModalProps> = ({
   isOpen,
+  company,
   onClose,
   onSuccess,
 }) => {
@@ -21,7 +23,18 @@ export const NewCompanyModal: React.FC<NewCompanyModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  if (!isOpen) return null;
+  useEffect(() => {
+    if (company && isOpen) {
+      setName(company.name || '');
+      setDescription(company.description || '');
+      setWebsite(company.website || '');
+      setContactEmail(company.contact_email || '');
+      setContactPhone(company.contact_phone || '');
+      setError(null);
+    }
+  }, [company, isOpen]);
+
+  if (!isOpen || !company) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,23 +46,17 @@ export const NewCompanyModal: React.FC<NewCompanyModalProps> = ({
     try {
       setIsSubmitting(true);
       setError(null);
-      const company = await createCompany({
+      const updated = await updateCompany(company.id, {
         name: name.trim(),
         description: description.trim() || undefined,
         website: website.trim() || undefined,
         contact_email: contactEmail.trim() || undefined,
         contact_phone: contactPhone.trim() || undefined,
       });
-      onSuccess(company);
+      onSuccess(updated);
       onClose();
-      // Reset form
-      setName('');
-      setDescription('');
-      setWebsite('');
-      setContactEmail('');
-      setContactPhone('');
     } catch (err: any) {
-      setError(err?.response?.data?.detail || 'Failed to create company. Please try again.');
+      setError(err?.response?.data?.detail || 'Failed to update company. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -63,7 +70,7 @@ export const NewCompanyModal: React.FC<NewCompanyModalProps> = ({
             <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white">
               <Building2 className="w-4 h-4" />
             </div>
-            <h3 className="font-semibold text-base">Create New Company</h3>
+            <h3 className="font-semibold text-base">Edit Company Profile</h3>
           </div>
           <button
             type="button"
@@ -92,7 +99,7 @@ export const NewCompanyModal: React.FC<NewCompanyModalProps> = ({
                 required
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. Acme Corporation, TechCorp Global"
+                placeholder="e.g. Acme Corporation"
                 className="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-medium"
               />
             </div>
@@ -178,11 +185,11 @@ export const NewCompanyModal: React.FC<NewCompanyModalProps> = ({
               className="flex items-center space-x-2 px-5 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg shadow-sm transition-all cursor-pointer"
             >
               {isSubmitting ? (
-                <span>Creating...</span>
+                <span>Saving...</span>
               ) : (
                 <>
                   <CheckCircle2 className="w-4 h-4" />
-                  <span>Create Company</span>
+                  <span>Save Changes</span>
                 </>
               )}
             </button>
@@ -193,4 +200,4 @@ export const NewCompanyModal: React.FC<NewCompanyModalProps> = ({
   );
 };
 
-export default NewCompanyModal;
+export default EditCompanyModal;

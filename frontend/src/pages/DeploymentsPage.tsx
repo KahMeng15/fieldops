@@ -10,7 +10,8 @@ import {
   Layers, 
   Calendar,
   AlertCircle,
-  Package
+  Package,
+  User
 } from 'lucide-react';
 import { getDeployments, deleteDeployment, getDeploymentFieldSettings, type DeploymentData } from '../api';
 import NewDeploymentModal from '../components/NewDeploymentModal';
@@ -200,6 +201,7 @@ export const DeploymentsPage = () => {
                   <th className="px-6 py-3.5 text-left text-xs font-semibold uppercase tracking-wider">Company / Customer</th>
                   <th className="px-6 py-3.5 text-left text-xs font-semibold uppercase tracking-wider">Location</th>
                   <th className="px-6 py-3.5 text-left text-xs font-semibold uppercase tracking-wider">Deployed Product</th>
+                  <th className="px-6 py-3.5 text-left text-xs font-semibold uppercase tracking-wider">Account Owner</th>
                   <th className="px-6 py-3.5 text-left text-xs font-semibold uppercase tracking-wider">Type</th>
                   <th className="px-6 py-3.5 text-left text-xs font-semibold uppercase tracking-wider">Status</th>
                   <th className="px-6 py-3.5 text-left text-xs font-semibold uppercase tracking-wider">Date</th>
@@ -246,6 +248,17 @@ export const DeploymentsPage = () => {
                           {d.deployed_product || 'FieldOps Core Gateway'}
                         </span>
                       </div>
+                    </td>
+
+                    <td className="px-6 py-4 whitespace-nowrap text-xs text-slate-600">
+                      {d.account_owner ? (
+                        <div className="flex items-center space-x-1.5">
+                          <User className="w-3.5 h-3.5 text-slate-400" />
+                          <span className="font-medium text-slate-800">{d.account_owner}</span>
+                        </div>
+                      ) : (
+                        <span className="text-slate-400">—</span>
+                      )}
                     </td>
 
                     <td className="px-6 py-4 whitespace-nowrap">
