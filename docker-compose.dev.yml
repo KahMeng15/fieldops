@@ -1,0 +1,153 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: fieldops-postgres-dev
+    environment:
+      POSTGRES_DB: appdb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-supersecurepassword123}
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app_network
+
+  redis:
+    image: redis:7-alpine
+    container_name: fieldops-redis-dev
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app_network
+
+  minio:
+    image: quay.io/minio/minio:latest
+    container_name: fieldops-minio-dev
+    environment:
+      MINIO_ROOT_USER: ${MINIO_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD:-supersecureminiopassword123}
+    volumes:
+      - minio_dev_data:/data
+    ports:
+      - "${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app_network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: fieldops-backend-dev
+    command: >
+      sh -c "alembic upgrade head &&
+             python scripts/seed_data.py &&
+             uvicorn app.main:app --reload --host 0.0.0.0 --port 8000"
+    environment:
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-supersecurepassword123}@postgres:5432/appdb
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: ${JWT_SECRET:-supersecurejwtsecret123}
+      MASTER_KEY_PATH: /tmp/master.key
+      AWS_ACCESS_KEY_ID: ${MINIO_USER:-minioadmin}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_PASSWORD:-supersecureminiopassword123}
+      AWS_S3_ENDPOINT: http://minio:9000
+      ENVIRONMENT: development
+    volumes:
+      - ./backend:/app
+      - ./scripts:/app/scripts:ro
+    ports:
+      - "${BACKEND_PORT:-8001}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app_network
+
+  celery_worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: fieldops-celery-worker-dev
+    command: celery -A tasks.celery_app worker --loglevel=info
+    environment:
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-supersecurepassword123}@postgres:5432/appdb
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: ${JWT_SECRET:-supersecurejwtsecret123}
+      MASTER_KEY_PATH: /tmp/master.key
+    volumes:
+      - ./backend:/app
+    depends_on:
+      - postgres
+      - redis
+      - backend
+    networks:
+      - app_network
+
+  celery_beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: fieldops-celery-beat-dev
+    command: celery -A tasks.celery_app beat --loglevel=info
+    environment:
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-supersecurepassword123}@postgres:5432/appdb
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+      - ./backend:/app
+    depends_on:
+      - postgres
+      - redis
+      - celery_worker
+    networks:
+      - app_network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: fieldops-frontend-dev
+    environment:
+      - BACKEND_URL=http://backend:8000
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "${FRONTEND_PORT:-3002}:3000"
+    depends_on:
+      - backend
+    networks:
+      - app_network
+
+volumes:
+  postgres_dev_data:
+  minio_dev_data:
+
+networks:
+  app_network:
+    driver: bridge
