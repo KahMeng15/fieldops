@@ -12,7 +12,7 @@ import {
   Calendar,
   AlertCircle
 } from 'lucide-react';
-import { getDeployments, deleteDeployment, type DeploymentData } from '../api';
+import { getDeployments, deleteDeployment, getDeploymentFieldSettings, type DeploymentData } from '../api';
 import NewDeploymentModal from '../components/NewDeploymentModal';
 
 export const DeploymentsPage = () => {
@@ -23,6 +23,8 @@ export const DeploymentsPage = () => {
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [typeOptions, setTypeOptions] = useState<string[]>(['Deployment', 'POC']);
+  const [statusOptions, setStatusOptions] = useState<string[]>(['Planning', 'Pre-POC', 'In Progress', 'Staging', 'Active', 'Completed']);
 
   const fetchDeploymentsList = async () => {
     try {
@@ -38,6 +40,12 @@ export const DeploymentsPage = () => {
 
   useEffect(() => {
     fetchDeploymentsList();
+    getDeploymentFieldSettings().then(settings => {
+      const tf = settings.fields.find(f => f.key === 'deployment_type');
+      if (tf?.options?.length) setTypeOptions(tf.options);
+      const sf = settings.fields.find(f => f.key === 'pre_poc_status');
+      if (sf?.options?.length) setStatusOptions(sf.options);
+    }).catch(() => {});
   }, []);
 
   const handleDelete = async (id: string, customerName: string) => {
@@ -137,8 +145,9 @@ export const DeploymentsPage = () => {
             className="px-3 py-1.5 text-xs font-medium border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500"
           >
             <option value="all">All Types</option>
-            <option value="Deployment">Production Deployment</option>
-            <option value="POC">POC</option>
+            {typeOptions.map(opt => (
+              <option key={opt} value={opt}>{opt}</option>
+            ))}
           </select>
 
           <select
@@ -147,11 +156,9 @@ export const DeploymentsPage = () => {
             className="px-3 py-1.5 text-xs font-medium border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500"
           >
             <option value="all">All Statuses</option>
-            <option value="active">Active</option>
-            <option value="in progress">In Progress</option>
-            <option value="planning">Planning</option>
-            <option value="pre-poc">Pre-POC</option>
-            <option value="completed">Completed</option>
+            {statusOptions.map(opt => (
+              <option key={opt} value={opt}>{opt}</option>
+            ))}
           </select>
         </div>
       </div>

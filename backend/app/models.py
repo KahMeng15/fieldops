@@ -50,7 +50,7 @@ class Deployment(Base):
     customer_name = Column(String, index=True)
     location = Column(String)
     account_owner_id = Column(UUID(as_uuid=True), ForeignKey("users.id"))
-    deployment_type = Column(Enum(DeploymentType))
+    deployment_type = Column(String)
     pre_poc_status = Column(String)
     poc_status = Column(String)
     post_poc_status = Column(String)

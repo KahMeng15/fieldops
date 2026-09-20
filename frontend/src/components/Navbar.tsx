@@ -1,10 +1,20 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
-import { Server, LayoutDashboard, LogOut, User as UserIcon, Shield, Activity } from 'lucide-react';
+import { 
+  Server, 
+  LayoutDashboard, 
+  LogOut, 
+  User as UserIcon, 
+  Shield, 
+  Settings, 
+  ChevronDown 
+} from 'lucide-react';
 import { logout, getMe } from '../api';
 
 export const Navbar = () => {
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -16,6 +26,27 @@ export const Navbar = () => {
         setCurrentUser({ username: 'admin' });
       });
   }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setMenuOpen(false);
+      }
+    };
+    if (menuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('keydown', handleKeyDown);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [menuOpen]);
 
   const handleLogout = () => {
     logout();
@@ -37,12 +68,7 @@ export const Navbar = () => {
               <div className="w-10 h-10 rounded-lg bg-blue-600 flex items-center justify-center text-white shadow-md shadow-blue-600/30 group-hover:bg-blue-500 transition-colors">
                 <Server className="w-5 h-5" />
               </div>
-              <div>
-                <span className="font-bold text-lg tracking-tight">FieldOps</span>
-                <span className="hidden sm:inline-block ml-2 text-xs font-medium px-2 py-0.5 rounded bg-blue-900/60 text-blue-300 border border-blue-700/50">
-                  v1.0
-                </span>
-              </div>
+              <span className="font-bold text-lg tracking-tight">FieldOps</span>
             </NavLink>
 
             <div className="flex space-x-1">
@@ -70,38 +96,88 @@ export const Navbar = () => {
             </div>
           </div>
 
-          {/* Right: User Info & Actions */}
-          <div className="flex items-center space-x-4">
-            <div className="hidden sm:flex items-center space-x-2 text-xs bg-emerald-950/60 text-emerald-400 border border-emerald-800/40 px-2.5 py-1 rounded-full">
-              <Activity className="w-3 h-3 animate-pulse" />
-              <span>API Live</span>
-            </div>
+          {/* Right: User Menu Dropdown */}
+          <div className="relative" ref={menuRef}>
+            <button
+              type="button"
+              onClick={() => setMenuOpen((prev) => !prev)}
+              aria-expanded={menuOpen}
+              aria-haspopup="true"
+              className="flex items-center space-x-2.5 px-3 py-1.5 rounded-lg bg-slate-800/70 hover:bg-slate-800 border border-slate-700/70 hover:border-slate-600 text-slate-200 transition-all focus:outline-none focus:ring-2 focus:ring-blue-500/50 cursor-pointer"
+            >
+              <div className="w-7 h-7 rounded-full bg-slate-700 border border-slate-600 flex items-center justify-center text-slate-300">
+                <UserIcon className="w-3.5 h-3.5" />
+              </div>
+              <div className="hidden md:block text-left text-xs">
+                <p className="font-semibold text-slate-200 leading-tight">
+                  {currentUser?.username || 'admin'}
+                </p>
+                <p className="text-[11px] text-slate-400 flex items-center space-x-1 leading-tight">
+                  <Shield className="w-2.5 h-2.5 text-blue-400" />
+                  <span>Admin</span>
+                </p>
+              </div>
+              <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${menuOpen ? 'rotate-180' : ''}`} />
+            </button>
 
-            <div className="flex items-center space-x-3 pl-2 border-l border-slate-800">
-              <div className="flex items-center space-x-2">
-                <div className="w-8 h-8 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-300">
-                  <UserIcon className="w-4 h-4" />
-                </div>
-                <div className="hidden md:block text-left text-xs">
-                  <p className="font-semibold text-slate-200">
+            {menuOpen && (
+              <div 
+                role="menu"
+                aria-orientation="vertical"
+                className="absolute right-0 mt-2 w-48 rounded-lg bg-slate-800 border border-slate-700 shadow-xl py-1.5 z-50 animate-in fade-in zoom-in-95 duration-100"
+              >
+                <div className="px-3.5 py-2 border-b border-slate-700/80 md:hidden">
+                  <p className="text-xs font-semibold text-slate-200">
                     {currentUser?.username || 'admin'}
                   </p>
-                  <p className="text-slate-400 flex items-center space-x-1">
+                  <p className="text-[11px] text-slate-400 flex items-center space-x-1 mt-0.5">
                     <Shield className="w-2.5 h-2.5 text-blue-400" />
                     <span>Admin</span>
                   </p>
                 </div>
-              </div>
 
-              <button
-                onClick={handleLogout}
-                title="Log out"
-                className="flex items-center space-x-1.5 px-3 py-1.5 text-xs font-medium text-slate-300 bg-slate-800 hover:bg-red-950/40 hover:text-red-300 hover:border-red-800/50 border border-slate-700/80 rounded-md transition-colors"
-              >
-                <LogOut className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Logout</span>
-              </button>
-            </div>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    navigate('/settings/user');
+                  }}
+                  className="w-full flex items-center space-x-2.5 px-3.5 py-2 text-xs font-medium text-slate-200 hover:bg-slate-700/70 hover:text-white transition-colors text-left cursor-pointer"
+                >
+                  <Settings className="w-4 h-4 text-slate-400" />
+                  <span>User Settings</span>
+                </button>
+
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    navigate('/settings/admin');
+                  }}
+                  className="w-full flex items-center space-x-2.5 px-3.5 py-2 text-xs font-medium text-slate-200 hover:bg-slate-700/70 hover:text-white transition-colors text-left cursor-pointer"
+                >
+                  <Shield className="w-4 h-4 text-slate-400" />
+                  <span>Admin Settings</span>
+                </button>
+
+                <div className="border-t border-slate-700/80 my-1" />
+
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    handleLogout();
+                  }}
+                  className="w-full flex items-center space-x-2.5 px-3.5 py-2 text-xs font-medium text-red-400 hover:bg-red-950/40 hover:text-red-300 transition-colors text-left cursor-pointer"
+                >
+                  <LogOut className="w-4 h-4 text-red-400" />
+                  <span>Logout</span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>

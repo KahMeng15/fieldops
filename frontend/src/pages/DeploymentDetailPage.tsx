@@ -25,6 +25,7 @@ import {
   revealCredential, 
   updateDeployment,
   deleteDeployment,
+  getDeploymentFieldSettings,
   type DeploymentData, 
   type CredentialData 
 } from '../api';
@@ -43,6 +44,9 @@ export const DeploymentDetailPage = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isCredModalOpen, setIsCredModalOpen] = useState(false);
   const [statusUpdating, setStatusUpdating] = useState(false);
+  const [statusOptions, setStatusOptions] = useState<string[]>([
+    'Planning', 'Pre-POC', 'In Progress', 'Staging', 'Active', 'Completed'
+  ]);
 
   const fetchDetails = async () => {
     if (!id) return;
@@ -63,6 +67,10 @@ export const DeploymentDetailPage = () => {
 
   useEffect(() => {
     fetchDetails();
+    getDeploymentFieldSettings().then(settings => {
+      const sf = settings.fields.find(f => f.key === 'pre_poc_status');
+      if (sf?.options?.length) setStatusOptions(sf.options);
+    }).catch(() => {});
   }, [id]);
 
   const handleStatusChange = async (newStatus: string) => {
@@ -204,12 +212,9 @@ export const DeploymentDetailPage = () => {
               disabled={statusUpdating}
               className="px-3 py-1.5 text-xs font-semibold border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 cursor-pointer"
             >
-              <option value="Planning">Planning</option>
-              <option value="Pre-POC">Pre-POC</option>
-              <option value="In Progress">In Progress</option>
-              <option value="Staging">Staging</option>
-              <option value="Active">Active</option>
-              <option value="Completed">Completed</option>
+              {statusOptions.map(opt => (
+                <option key={opt} value={opt}>{opt}</option>
+              ))}
             </select>
           </div>
 

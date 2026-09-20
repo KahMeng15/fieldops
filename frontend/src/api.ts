@@ -130,4 +130,38 @@ export const revealCredential = async (credId: string) => {
   return data;
 };
 
+export interface DeploymentFieldConfig {
+  key: string;
+  label: string;
+  type: 'text' | 'select' | 'textarea';
+  enabled: boolean;
+  required: boolean;
+  default_value: string;
+  options?: string[];
+  system_fixed?: boolean;
+  description?: string;
+}
+
+export interface DeploymentFieldsSettings {
+  fields: DeploymentFieldConfig[];
+  custom_fields?: DeploymentFieldConfig[];
+}
+
+export const getDeploymentFieldSettings = async (): Promise<DeploymentFieldsSettings> => {
+  const { data } = await api.get('/settings/deployment-fields');
+  return data;
+};
+
+export const updateDeploymentFieldSettings = async (
+  settings: DeploymentFieldsSettings
+): Promise<DeploymentFieldsSettings> => {
+  const { data } = await api.put('/settings/deployment-fields', settings);
+  return data;
+};
+
+export const resetDeploymentFieldSettings = async (): Promise<DeploymentFieldsSettings> => {
+  const { data } = await api.post('/settings/deployment-fields/reset');
+  return data;
+};
+
 export default api;

@@ -5,6 +5,8 @@ import DeploymentsPage from './pages/DeploymentsPage';
 import DeploymentDetailPage from './pages/DeploymentDetailPage';
 import Layout from './components/Layout';
 
+import SettingsPage from './pages/SettingsPage';
+
 const PrivateRoute = () => {
   const token = localStorage.getItem('access_token');
   return token ? <Layout><Outlet /></Layout> : <Navigate to="/login" replace />;
@@ -21,6 +23,8 @@ function App() {
           <Route path="/" element={<DashboardPage />} />
           <Route path="/deployments" element={<DeploymentsPage />} />
           <Route path="/deployments/:id" element={<DeploymentDetailPage />} />
+          <Route path="/settings/user" element={<SettingsPage type="user" />} />
+          <Route path="/settings/admin" element={<SettingsPage type="admin" />} />
         </Route>
 
         {/* Catch-all redirect */}
