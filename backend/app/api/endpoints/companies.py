@@ -2,13 +2,16 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.db.base import get_db
-from app.models import Company, Location, Deployment, AuditLog, User
+from app.models import Company, Location, Deployment, AuditLog, User, CompanyContact
 from app.schemas import (
     CompanyCreate,
     CompanyResponse,
     LocationCreate,
     LocationResponse,
-    DeploymentResponse
+    DeploymentResponse,
+    CompanyContactCreate,
+    CompanyContactUpdate,
+    CompanyContactResponse
 )
 from app.api.deps import get_current_user, require_permission
 from typing import List, Optional
@@ -146,6 +149,11 @@ async def get_company(
         Deployment.deleted_at == None
     ).scalar() or 0
 
+    contacts = db.query(CompanyContact).filter(
+        CompanyContact.company_id == company.id,
+        CompanyContact.deleted_at == None
+    ).order_by(CompanyContact.created_at.asc()).all()
+
     return CompanyResponse(
         id=company.id,
         name=company.name,
@@ -156,6 +164,7 @@ async def get_company(
         locations_count=len(loc_responses),
         deployments_count=dep_count_total,
         locations=loc_responses,
+        contacts=contacts,
         created_at=company.created_at,
         updated_at=company.updated_at
     )
@@ -321,3 +330,139 @@ async def create_company_location(
         created_at=location.created_at,
         updated_at=location.updated_at
     )
+
+# --- Company Contacts Endpoints ---
+
+@router.get("/{id}/contacts", response_model=List[CompanyContactResponse])
+async def list_company_contacts(
+    id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    company = db.query(Company).filter(Company.id == id, Company.deleted_at == None).first()
+    if not company:
+        raise HTTPException(404, "Company not found")
+    
+    contacts = db.query(CompanyContact).filter(
+        CompanyContact.company_id == company.id,
+        CompanyContact.deleted_at == None
+    ).order_by(CompanyContact.created_at.asc()).all()
+    return contacts
+
+@router.post("/{id}/contacts", response_model=CompanyContactResponse, status_code=201)
+async def create_company_contact(
+    id: UUID,
+    data: CompanyContactCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(["create_deployment"]))
+):
+    company = db.query(Company).filter(Company.id == id, Company.deleted_at == None).first()
+    if not company:
+        raise HTTPException(404, "Company not found")
+    
+    name = data.name.strip()
+    if not name:
+        raise HTTPException(400, "Contact name is required")
+    
+    contact = CompanyContact(
+        company_id=company.id,
+        name=name,
+        email=data.email.strip() if data.email else None,
+        phone=data.phone.strip() if data.phone else None,
+        position=data.position.strip() if data.position else None,
+        notes=data.notes.strip() if data.notes else None
+    )
+    db.add(contact)
+    db.commit()
+    db.refresh(contact)
+
+    audit_log = AuditLog(
+        user_id=current_user.id,
+        action="create_company_contact",
+        resource_type="company_contact",
+        resource_id=contact.id,
+        ip_address=request.client.host if request.client else "127.0.0.1",
+        notes=f"Added contact {contact.name} for company {company.name}"
+    )
+    db.add(audit_log)
+    db.commit()
+
+    return contact
+
+@router.patch("/{id}/contacts/{contact_id}", response_model=CompanyContactResponse)
+async def update_company_contact(
+    id: UUID,
+    contact_id: UUID,
+    data: CompanyContactUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(["create_deployment"]))
+):
+    contact = db.query(CompanyContact).filter(
+        CompanyContact.id == contact_id,
+        CompanyContact.company_id == id,
+        CompanyContact.deleted_at == None
+    ).first()
+    if not contact:
+        raise HTTPException(404, "Contact not found")
+    
+    if data.name is not None:
+        contact.name = data.name.strip()
+    if data.email is not None:
+        contact.email = data.email.strip() if data.email else None
+    if data.phone is not None:
+        contact.phone = data.phone.strip() if data.phone else None
+    if data.position is not None:
+        contact.position = data.position.strip() if data.position else None
+    if data.notes is not None:
+        contact.notes = data.notes.strip() if data.notes else None
+    
+    contact.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(contact)
+
+    audit_log = AuditLog(
+        user_id=current_user.id,
+        action="update_company_contact",
+        resource_type="company_contact",
+        resource_id=contact.id,
+        ip_address=request.client.host if request.client else "127.0.0.1",
+        notes=f"Updated contact {contact.name}"
+    )
+    db.add(audit_log)
+    db.commit()
+
+    return contact
+
+@router.delete("/{id}/contacts/{contact_id}", status_code=204)
+async def delete_company_contact(
+    id: UUID,
+    contact_id: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(["delete_deployment"]))
+):
+    contact = db.query(CompanyContact).filter(
+        CompanyContact.id == contact_id,
+        CompanyContact.company_id == id,
+        CompanyContact.deleted_at == None
+    ).first()
+    if not contact:
+        raise HTTPException(404, "Contact not found")
+    
+    contact.deleted_at = datetime.utcnow()
+    db.commit()
+
+    audit_log = AuditLog(
+        user_id=current_user.id,
+        action="delete_company_contact",
+        resource_type="company_contact",
+        resource_id=contact.id,
+        ip_address=request.client.host if request.client else "127.0.0.1",
+        notes=f"Deleted contact {contact.name}"
+    )
+    db.add(audit_log)
+    db.commit()
+    return None
+

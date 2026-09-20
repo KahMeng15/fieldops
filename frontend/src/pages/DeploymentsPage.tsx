@@ -11,10 +11,13 @@ import {
   Calendar,
   AlertCircle,
   Package,
-  User
+  User,
+  MoreVertical,
+  Pencil
 } from 'lucide-react';
 import { getDeployments, deleteDeployment, getDeploymentFieldSettings, type DeploymentData } from '../api';
 import NewDeploymentModal from '../components/NewDeploymentModal';
+import EditDeploymentModal from '../components/EditDeploymentModal';
 
 export const DeploymentsPage = () => {
   const [deployments, setDeployments] = useState<DeploymentData[]>([]);
@@ -24,8 +27,18 @@ export const DeploymentsPage = () => {
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [editingDeployment, setEditingDeployment] = useState<DeploymentData | null>(null);
   const [typeOptions, setTypeOptions] = useState<string[]>(['Deployment', 'POC']);
-  const [statusOptions, setStatusOptions] = useState<string[]>(['Planning', 'Pre-POC', 'In Progress', 'Staging', 'Active', 'Completed']);
+  const [statusOptions, setStatusOptions] = useState<string[]>([
+    'Planning', 'Pre-POC', 'In Progress', 'Staging', 'Active', 'Completed'
+  ]);
+
+  useEffect(() => {
+    const handleClickOutside = () => setOpenMenuId(null);
+    window.addEventListener('click', handleClickOutside);
+    return () => window.removeEventListener('click', handleClickOutside);
+  }, []);
 
   const fetchDeploymentsList = async () => {
     try {
@@ -285,23 +298,61 @@ export const DeploymentsPage = () => {
                       </div>
                     </td>
 
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-xs font-medium space-x-2">
-                      <Link
-                        to={`/deployments/${d.id}`}
-                        className="inline-flex items-center space-x-1 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md transition-colors"
-                      >
-                        <span>View</span>
-                        <ExternalLink className="w-3 h-3 text-slate-500" />
-                      </Link>
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-xs font-medium">
+                      <div className="flex items-center justify-end space-x-2">
+                        <Link
+                          to={`/deployments/${d.id}`}
+                          className="inline-flex items-center space-x-1 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md transition-colors"
+                        >
+                          <span>View</span>
+                          <ExternalLink className="w-3 h-3 text-slate-500" />
+                        </Link>
 
-                      <button
-                        onClick={() => d.id && handleDelete(d.id, d.customer_name)}
-                        disabled={deletingId === d.id}
-                        title="Delete Deployment"
-                        className="inline-flex items-center px-2 py-1.5 text-red-600 hover:bg-red-50 rounded-md transition-colors disabled:opacity-50"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                        <div className="relative inline-block text-left">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setOpenMenuId(prev => prev === d.id ? null : d.id!);
+                            }}
+                            className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-md transition-colors cursor-pointer border border-transparent hover:border-slate-200"
+                            title="Actions"
+                          >
+                            <MoreVertical className="w-4 h-4" />
+                          </button>
+
+                          {openMenuId === d.id && (
+                            <div 
+                              onClick={(e) => e.stopPropagation()}
+                              className="absolute right-0 mt-1 w-44 rounded-lg bg-white shadow-lg border border-slate-200 py-1 z-30 animate-in fade-in zoom-in-95 duration-100 text-left"
+                            >
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setOpenMenuId(null);
+                                  setEditingDeployment(d);
+                                }}
+                                className="w-full text-left px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 flex items-center space-x-2 cursor-pointer"
+                              >
+                                <Pencil className="w-3.5 h-3.5 text-slate-500" />
+                                <span>Edit Deployment</span>
+                              </button>
+                              <button
+                                type="button"
+                                disabled={deletingId === d.id}
+                                onClick={() => {
+                                  setOpenMenuId(null);
+                                  d.id && handleDelete(d.id, d.customer_name);
+                                }}
+                                className="w-full text-left px-3.5 py-2 text-xs font-medium text-red-600 hover:bg-red-50 flex items-center space-x-2 cursor-pointer border-t border-slate-100 disabled:opacity-50"
+                              >
+                                <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                                <span>{deletingId === d.id ? 'Deleting...' : 'Delete Deployment'}</span>
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -319,6 +370,19 @@ export const DeploymentsPage = () => {
           setDeployments(prev => [newDep, ...prev]);
         }}
       />
+
+      {/* Edit Deployment Modal */}
+      {editingDeployment && (
+        <EditDeploymentModal
+          isOpen={Boolean(editingDeployment)}
+          deployment={editingDeployment}
+          onClose={() => setEditingDeployment(null)}
+          onSuccess={updated => {
+            setDeployments(prev => prev.map(dep => dep.id === updated.id ? { ...dep, ...updated } : dep));
+            setEditingDeployment(null);
+          }}
+        />
+      )}
     </div>
   );
 };

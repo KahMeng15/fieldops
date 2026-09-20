@@ -77,6 +77,18 @@ export interface CompanyLocation {
   updated_at: string;
 }
 
+export interface CompanyContact {
+  id: string;
+  company_id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  position?: string;
+  notes?: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Company {
   id: string;
   name: string;
@@ -87,6 +99,7 @@ export interface Company {
   locations_count?: number;
   deployments_count?: number;
   locations?: CompanyLocation[];
+  contacts?: CompanyContact[];
   created_at: string;
   updated_at: string;
 }
@@ -119,6 +132,41 @@ export const updateCompany = async (id: string, company: Partial<Company>): Prom
 
 export const deleteCompany = async (id: string): Promise<void> => {
   await api.delete(`/companies/${id}`);
+};
+
+export const getCompanyContacts = async (companyId: string): Promise<CompanyContact[]> => {
+  const { data } = await api.get(`/companies/${companyId}/contacts`);
+  return data;
+};
+
+export const createCompanyContact = async (
+  companyId: string,
+  contact: {
+    name: string;
+    email?: string;
+    phone?: string;
+    position?: string;
+    notes?: string;
+  }
+): Promise<CompanyContact> => {
+  const { data } = await api.post(`/companies/${companyId}/contacts`, contact);
+  return data;
+};
+
+export const updateCompanyContact = async (
+  companyId: string,
+  contactId: string,
+  contact: Partial<CompanyContact>
+): Promise<CompanyContact> => {
+  const { data } = await api.patch(`/companies/${companyId}/contacts/${contactId}`, contact);
+  return data;
+};
+
+export const deleteCompanyContact = async (
+  companyId: string,
+  contactId: string
+): Promise<void> => {
+  await api.delete(`/companies/${companyId}/contacts/${contactId}`);
 };
 
 export const getCompanyLocations = async (companyId: string): Promise<CompanyLocation[]> => {
@@ -175,10 +223,15 @@ export interface DeploymentData {
   deployment_date?: string;
   internal_group_name?: string;
   account_owner?: string;
+  lead_engineer?: string;
+  assisting_engineers?: string;
   deployment_type: 'Deployment' | 'POC';
   pre_poc_status?: string;
   poc_status?: string;
   post_poc_status?: string;
+  status_updated_at?: string;
+  status_updated_by_id?: string;
+  status_updated_by_name?: string;
   notes?: string;
   created_at?: string;
   updated_at?: string;

@@ -98,6 +98,26 @@ DEFAULT_DEPLOYMENT_SETTINGS: Dict[str, Any] = {
             "description": "Primary sales account manager, customer success lead, or client executive"
         },
         {
+            "key": "lead_engineer",
+            "label": "Lead Engineer",
+            "type": "text",
+            "enabled": True,
+            "required": False,
+            "default_value": "",
+            "system_fixed": False,
+            "description": "Primary field or deployment engineer leading implementation"
+        },
+        {
+            "key": "assisting_engineers",
+            "label": "Assisting Engineer(s)",
+            "type": "text",
+            "enabled": True,
+            "required": False,
+            "default_value": "",
+            "system_fixed": False,
+            "description": "Secondary or assisting field engineers on site or remote"
+        },
+        {
             "key": "notes",
             "label": "Notes & Technical Specs",
             "type": "textarea",

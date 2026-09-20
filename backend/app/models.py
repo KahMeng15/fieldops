@@ -52,7 +52,23 @@ class Company(Base):
     deleted_at = Column(DateTime, nullable=True)
 
     locations = relationship("Location", back_populates="company", cascade="all, delete-orphan")
+    contacts = relationship("CompanyContact", back_populates="company", cascade="all, delete-orphan")
     deployments = relationship("Deployment", back_populates="company")
+
+class CompanyContact(Base):
+    __tablename__ = "company_contacts"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    name = Column(String, nullable=False)
+    email = Column(String, nullable=True)
+    phone = Column(String, nullable=True)
+    position = Column(String, nullable=True)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    deleted_at = Column(DateTime, nullable=True)
+
+    company = relationship("Company", back_populates="contacts")
 
 class Location(Base):
     __tablename__ = "locations"
@@ -87,10 +103,15 @@ class Deployment(Base):
     location = Column(String)
     account_owner_id = Column(UUID(as_uuid=True), ForeignKey("users.id"))
     account_owner = Column(String, nullable=True)
+    lead_engineer = Column(String, nullable=True)
+    assisting_engineers = Column(String, nullable=True)
     deployment_type = Column(String)
     pre_poc_status = Column(String)
     poc_status = Column(String)
     post_poc_status = Column(String)
+    status_updated_at = Column(DateTime, nullable=True)
+    status_updated_by_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    status_updated_by_name = Column(String, nullable=True)
     server_collected_at = Column(DateTime, nullable=True)
     notes = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -102,6 +123,7 @@ class Deployment(Base):
     location_rel = relationship("Location", back_populates="deployments")
     account_owner_user = relationship("User", foreign_keys=[account_owner_id])
     created_by = relationship("User", foreign_keys=[created_by_id])
+    status_updated_by_user = relationship("User", foreign_keys=[status_updated_by_id])
     engineers = relationship("DeploymentEngineer", back_populates="deployment")
     loaned_items = relationship("LoanedItem", back_populates="deployment")
     credentials = relationship("Credential", back_populates="deployment")

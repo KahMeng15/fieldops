@@ -11,7 +11,8 @@ import {
   User,
   Package, 
   Calendar, 
-  Plus 
+  Plus,
+  Wrench
 } from 'lucide-react';
 import { 
   createDeployment, 
@@ -66,6 +67,8 @@ export const NewDeploymentModal: React.FC<NewDeploymentModalProps> = ({
   const [deploymentType, setDeploymentType] = useState('Deployment');
   const [internalGroupName, setInternalGroupName] = useState('');
   const [accountOwner, setAccountOwner] = useState('');
+  const [leadEngineer, setLeadEngineer] = useState('');
+  const [assistingEngineers, setAssistingEngineers] = useState('');
   const [status, setStatus] = useState('Planning');
   const [notes, setNotes] = useState('');
   const [customValues, setCustomValues] = useState<Record<string, string>>({});
@@ -122,6 +125,8 @@ export const NewDeploymentModal: React.FC<NewDeploymentModalProps> = ({
           const typeField = fields.find(f => f.key === 'deployment_type');
           const groupField = fields.find(f => f.key === 'internal_group_name');
           const ownerField = fields.find(f => f.key === 'account_owner');
+          const leadField = fields.find(f => f.key === 'lead_engineer');
+          const assistField = fields.find(f => f.key === 'assisting_engineers');
           const statusField = fields.find(f => f.key === 'pre_poc_status');
           const notesField = fields.find(f => f.key === 'notes');
 
@@ -129,13 +134,15 @@ export const NewDeploymentModal: React.FC<NewDeploymentModalProps> = ({
           setDeploymentType(typeField?.default_value ?? '');
           setInternalGroupName(groupField?.default_value ?? '');
           setAccountOwner(ownerField?.default_value ?? '');
+          setLeadEngineer(leadField?.default_value ?? '');
+          setAssistingEngineers(assistField?.default_value ?? '');
           setStatus(statusField?.default_value ?? '');
           setNotes(notesField?.default_value ?? '');
 
           // Initialize custom/dynamic fields default values
           const initialCustom: Record<string, string> = {};
           fields
-            .filter(f => !['customer_name', 'location', 'deployed_product', 'deployment_date', 'deployment_type', 'internal_group_name', 'account_owner', 'pre_poc_status', 'notes'].includes(f.key))
+            .filter(f => !['customer_name', 'location', 'deployed_product', 'deployment_date', 'deployment_type', 'internal_group_name', 'account_owner', 'lead_engineer', 'assisting_engineers', 'pre_poc_status', 'notes'].includes(f.key))
             .forEach(f => {
               initialCustom[f.key] = f.default_value ?? '';
             });
@@ -263,13 +270,19 @@ export const NewDeploymentModal: React.FC<NewDeploymentModalProps> = ({
       if (isFieldEnabled('account_owner')) {
         payload.account_owner = accountOwner.trim() || null;
       }
+      if (isFieldEnabled('lead_engineer')) {
+        payload.lead_engineer = leadEngineer.trim() || null;
+      }
+      if (isFieldEnabled('assisting_engineers')) {
+        payload.assisting_engineers = assistingEngineers.trim() || null;
+      }
       if (isFieldEnabled('notes')) {
         payload.notes = notes.trim() || null;
       }
 
       // Add all other custom or non-system fields directly to payload to save in PostgreSQL
       const otherConfiguredFields = (settings?.fields || []).filter(
-        f => !['customer_name', 'location', 'deployed_product', 'deployment_date', 'deployment_type', 'internal_group_name', 'account_owner', 'pre_poc_status', 'notes'].includes(f.key) && f.enabled
+        f => !['customer_name', 'location', 'deployed_product', 'deployment_date', 'deployment_type', 'internal_group_name', 'account_owner', 'lead_engineer', 'assisting_engineers', 'pre_poc_status', 'notes'].includes(f.key) && f.enabled
       );
 
       for (const cf of otherConfiguredFields) {
@@ -608,6 +621,45 @@ export const NewDeploymentModal: React.FC<NewDeploymentModalProps> = ({
                     </div>
                   </div>
                 )}
+                {/* Lead Engineer */}
+                {isFieldEnabled('lead_engineer') && (
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                      Lead Engineer {isFieldRequired('lead_engineer') && '*'}
+                    </label>
+                    <div className="relative">
+                      <Wrench className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+                      <input
+                        type="text"
+                        value={leadEngineer}
+                        required={isFieldRequired('lead_engineer')}
+                        onChange={e => setLeadEngineer(e.target.value)}
+                        placeholder="e.g. Alex Chen"
+                        className="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Assisting Engineer(s) */}
+                {isFieldEnabled('assisting_engineers') && (
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                      Assisting Engineer(s) {isFieldRequired('assisting_engineers') && '*'}
+                    </label>
+                    <div className="relative">
+                      <Users className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+                      <input
+                        type="text"
+                        value={assistingEngineers}
+                        required={isFieldRequired('assisting_engineers')}
+                        onChange={e => setAssistingEngineers(e.target.value)}
+                        placeholder="e.g. Sarah Miller, David Kim"
+                        className="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Notes */}
@@ -631,7 +683,7 @@ export const NewDeploymentModal: React.FC<NewDeploymentModalProps> = ({
 
               {/* Dynamically Render Any Custom Fields configured by Admin */}
               {(settings?.fields || [])
-                .filter(f => !['customer_name', 'location', 'deployed_product', 'deployment_date', 'deployment_type', 'internal_group_name', 'account_owner', 'pre_poc_status', 'notes'].includes(f.key) && f.enabled)
+                .filter(f => !['customer_name', 'location', 'deployed_product', 'deployment_date', 'deployment_type', 'internal_group_name', 'account_owner', 'lead_engineer', 'assisting_engineers', 'pre_poc_status', 'notes'].includes(f.key) && f.enabled)
                 .map(f => (
                   <div key={f.key}>
                     <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">

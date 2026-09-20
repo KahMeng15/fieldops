@@ -52,6 +52,32 @@ class LocationResponse(LocationBase):
     class Config:
         from_attributes = True
 
+class CompanyContactBase(BaseModel):
+    name: str
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    position: Optional[str] = None
+    notes: Optional[str] = None
+
+class CompanyContactCreate(CompanyContactBase):
+    pass
+
+class CompanyContactUpdate(BaseModel):
+    name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    position: Optional[str] = None
+    notes: Optional[str] = None
+
+class CompanyContactResponse(CompanyContactBase):
+    id: UUID
+    company_id: UUID
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
 class CompanyBase(BaseModel):
     name: str
     description: Optional[str] = None
@@ -67,6 +93,7 @@ class CompanyResponse(CompanyBase):
     locations_count: Optional[int] = 0
     deployments_count: Optional[int] = 0
     locations: Optional[List[LocationResponse]] = None
+    contacts: Optional[List[CompanyContactResponse]] = None
     created_at: datetime
     updated_at: datetime
 
@@ -82,10 +109,15 @@ class DeploymentSchema(BaseModel):
     deployment_date: Optional[datetime] = None
     internal_group_name: Optional[str] = None
     account_owner: Optional[str] = None
+    lead_engineer: Optional[str] = None
+    assisting_engineers: Optional[str] = None
     deployment_type: Optional[str] = None
     pre_poc_status: Optional[str] = None
     poc_status: Optional[str] = None
     post_poc_status: Optional[str] = None
+    status_updated_at: Optional[datetime] = None
+    status_updated_by_id: Optional[UUID] = None
+    status_updated_by_name: Optional[str] = None
     notes: Optional[str] = None
 
     class Config:
@@ -120,6 +152,8 @@ class DeploymentResponse(DeploymentSchema):
                 d["customer_name"] = data.company.name
             if hasattr(data, "location_rel") and data.location_rel:
                 d["location"] = data.location_rel.name
+            if not d.get("status_updated_by_name") and hasattr(data, "status_updated_by_user") and data.status_updated_by_user:
+                d["status_updated_by_name"] = data.status_updated_by_user.username
             return d
         elif hasattr(data, "__dict__"):
             return {k: v for k, v in data.__dict__.items() if not k.startswith("_")}

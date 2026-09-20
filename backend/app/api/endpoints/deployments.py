@@ -103,6 +103,10 @@ async def create_deployment(
     if not payload_data.get("deployment_date"):
         payload_data["deployment_date"] = data.deployment_date or datetime.utcnow()
 
+    payload_data["status_updated_at"] = datetime.utcnow()
+    payload_data["status_updated_by_id"] = current_user.id
+    payload_data["status_updated_by_name"] = current_user.username
+
     deployment = Deployment(**payload_data, created_by_id=current_user.id)
     db.add(deployment)
     db.flush()
@@ -146,7 +150,13 @@ async def update_deployment(
     if not deployment:
         raise HTTPException(404, "Deployment not found")
     
-    for key, value in data.dict(exclude_unset=True).items():
+    data_dict = data.dict(exclude_unset=True)
+    if "pre_poc_status" in data_dict or "poc_status" in data_dict or "post_poc_status" in data_dict:
+        deployment.status_updated_at = datetime.utcnow()
+        deployment.status_updated_by_id = current_user.id
+        deployment.status_updated_by_name = current_user.username
+
+    for key, value in data_dict.items():
         if key in actual_db_cols:
             setattr(deployment, key, value)
     

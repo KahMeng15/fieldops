@@ -12,6 +12,7 @@ import {
   Package, 
   Tag, 
   User,
+  Users,
   AlertCircle,
   Trash2,
   Pencil,
@@ -24,14 +25,17 @@ import {
   deleteCompany,
   deleteLocation,
   getLocationDeployments, 
+  deleteCompanyContact,
   type Company, 
   type CompanyLocation, 
+  type CompanyContact,
   type DeploymentData 
 } from '../api';
 import NewLocationModal from '../components/NewLocationModal';
 import EditLocationModal from '../components/EditLocationModal';
 import EditCompanyModal from '../components/EditCompanyModal';
 import NewDeploymentModal from '../components/NewDeploymentModal';
+import ContactModal from '../components/ContactModal';
 
 export const CompanyDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -51,6 +55,8 @@ export const CompanyDetailPage: React.FC = () => {
 
   // Modals
   const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
+  const [isContactModalOpen, setIsContactModalOpen] = useState(false);
+  const [editingContact, setEditingContact] = useState<CompanyContact | null>(null);
   const [deploymentModalLocation, setDeploymentModalLocation] = useState<CompanyLocation | null>(null);
 
   const fetchCompanyData = async () => {
@@ -134,6 +140,34 @@ export const CompanyDetailPage: React.FC = () => {
     }
   };
 
+  const handleDeleteContact = async (contactId: string, contactName: string) => {
+    if (!company) return;
+    if (!window.confirm(`Are you sure you want to delete contact "${contactName}"?`)) return;
+    try {
+      await deleteCompanyContact(company.id, contactId);
+      setCompany(prev => prev ? {
+        ...prev,
+        contacts: (prev.contacts || []).filter(c => c.id !== contactId)
+      } : null);
+    } catch (err: any) {
+      alert(err?.response?.data?.detail || 'Failed to delete contact.');
+    }
+  };
+
+  const handleContactSuccess = (saved: CompanyContact) => {
+    setCompany(prev => {
+      if (!prev) return null;
+      const currentContacts = prev.contacts || [];
+      const exists = currentContacts.some(c => c.id === saved.id);
+      return {
+        ...prev,
+        contacts: exists 
+          ? currentContacts.map(c => c.id === saved.id ? saved : c)
+          : [...currentContacts, saved]
+      };
+    });
+  };
+
   const getStatusBadge = (status?: string) => {
     switch (status?.toLowerCase()) {
       case 'active':
@@ -179,6 +213,7 @@ export const CompanyDetailPage: React.FC = () => {
   }
 
   const locations = company.locations || [];
+  const contacts = company.contacts || [];
 
   return (
     <div className="space-y-8 animate-in fade-in duration-200 pb-12">
@@ -210,13 +245,17 @@ export const CompanyDetailPage: React.FC = () => {
 
           {/* Quick Metrics and Menu */}
           <div className="flex items-center space-x-3 shrink-0">
-            <div className="bg-slate-50 px-4 py-2.5 rounded-xl border border-slate-200 text-center min-w-24">
-              <div className="text-xs font-medium text-slate-500">Locations</div>
-              <div className="text-xl font-bold text-slate-900">{locations.length}</div>
+            <div className="bg-slate-50 px-3.5 py-2 rounded-xl border border-slate-200 text-center min-w-20">
+              <div className="text-[11px] font-medium text-slate-500">Locations</div>
+              <div className="text-lg font-bold text-slate-900">{locations.length}</div>
             </div>
-            <div className="bg-blue-50 px-4 py-2.5 rounded-xl border border-blue-200 text-center min-w-28">
-              <div className="text-xs font-medium text-blue-700">Total Deployments</div>
-              <div className="text-xl font-bold text-blue-900">{company.deployments_count || 0}</div>
+            <div className="bg-blue-50 px-3.5 py-2 rounded-xl border border-blue-200 text-center min-w-24">
+              <div className="text-[11px] font-medium text-blue-700">Deployments</div>
+              <div className="text-lg font-bold text-blue-900">{company.deployments_count || 0}</div>
+            </div>
+            <div className="bg-emerald-50 px-3.5 py-2 rounded-xl border border-emerald-200 text-center min-w-20">
+              <div className="text-[11px] font-medium text-emerald-700">Contacts</div>
+              <div className="text-lg font-bold text-emerald-900">{contacts.length}</div>
             </div>
 
             {/* Company Action Menu at the very right */}
@@ -266,32 +305,175 @@ export const CompanyDetailPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Contact info bar */}
-        {(company.website || company.contact_email || company.contact_phone) && (
+        {/* Website & Profile info bar */}
+        {company.website && (
           <div className="flex flex-wrap items-center gap-4 pt-4 border-t border-slate-100 text-xs text-slate-600">
-            {company.website && (
-              <a
-                href={company.website.startsWith('http') ? company.website : `https://${company.website}`}
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center space-x-1.5 text-blue-600 hover:underline"
+            <a
+              href={company.website.startsWith('http') ? company.website : `https://${company.website}`}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center space-x-1.5 text-blue-600 hover:underline"
+            >
+              <Globe className="w-4 h-4 text-slate-400" />
+              <span>{company.website.replace(/^https?:\/\//, '')}</span>
+            </a>
+          </div>
+        )}
+      </div>
+
+      {/* Company Contacts Section */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2.5">
+            <h2 className="text-xl font-bold text-slate-900 tracking-tight flex items-center space-x-2">
+              <Users className="w-5 h-5 text-blue-600" />
+              <span>Company Contacts</span>
+            </h2>
+            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+              {contacts.length}
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              setEditingContact(null);
+              setIsContactModalOpen(true);
+            }}
+            className="flex items-center space-x-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-xs transition-all cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Add Contact</span>
+          </button>
+        </div>
+
+        {contacts.length === 0 ? (
+          <div className="py-8 text-center bg-white border border-dashed border-slate-200 rounded-xl p-6 shadow-2xs">
+            <Users className="w-9 h-9 text-slate-300 mx-auto mb-2" />
+            <h3 className="text-sm font-semibold text-slate-700 mb-0.5">No Contacts Added</h3>
+            <p className="text-xs text-slate-500 max-w-sm mx-auto mb-3">
+              Keep track of key technical leads, account executives, and escalation contacts for {company.name}.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setEditingContact(null);
+                setIsContactModalOpen(true);
+              }}
+              className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 rounded-lg text-xs font-semibold cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Add First Contact</span>
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {contacts.map((contact) => (
+              <div 
+                key={contact.id}
+                className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs hover:border-slate-300 transition-all flex flex-col justify-between relative group"
               >
-                <Globe className="w-4 h-4 text-slate-400" />
-                <span>{company.website.replace(/^https?:\/\//, '')}</span>
-              </a>
-            )}
-            {company.contact_email && (
-              <div className="flex items-center space-x-1.5">
-                <Mail className="w-4 h-4 text-slate-400" />
-                <span>{company.contact_email}</span>
+                <div className="space-y-3">
+                  {/* Top row: Avatar, Name, Position, and 3-dots Menu */}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-start space-x-3">
+                      <div className="w-9 h-9 rounded-full bg-blue-50 text-blue-700 border border-blue-200 flex items-center justify-center font-bold text-xs shrink-0">
+                        {contact.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || 'C'}
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-slate-900 text-sm leading-snug">
+                          {contact.name}
+                        </h4>
+                        {contact.position && (
+                          <span className="inline-block mt-0.5 text-[11px] font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200/60">
+                            {contact.position}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* 3-dots Menu for Contact */}
+                    <div className="relative inline-block text-left shrink-0">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setOpenMenuId(prev => prev === `contact-${contact.id}` ? null : `contact-${contact.id}`);
+                        }}
+                        className="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-md transition-colors cursor-pointer"
+                        title="Contact options"
+                      >
+                        <MoreVertical className="w-4 h-4" />
+                      </button>
+
+                      {openMenuId === `contact-${contact.id}` && (
+                        <div 
+                          onClick={(e) => e.stopPropagation()}
+                          className="absolute right-0 mt-1 w-36 rounded-lg bg-white shadow-lg border border-slate-200 py-1 z-30 animate-in fade-in zoom-in-95 duration-100"
+                        >
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setOpenMenuId(null);
+                              setEditingContact(contact);
+                              setIsContactModalOpen(true);
+                            }}
+                            className="w-full text-left px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 flex items-center space-x-2 cursor-pointer"
+                          >
+                            <Pencil className="w-3.5 h-3.5 text-slate-500" />
+                            <span>Edit Contact</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setOpenMenuId(null);
+                              handleDeleteContact(contact.id, contact.name);
+                            }}
+                            className="w-full text-left px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 flex items-center space-x-2 cursor-pointer border-t border-slate-100"
+                          >
+                            <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                            <span>Delete Contact</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Email & Phone */}
+                  <div className="space-y-1 text-xs text-slate-600 pt-1">
+                    {contact.email && (
+                      <div className="flex items-center space-x-2">
+                        <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        <a 
+                          href={`mailto:${contact.email}`}
+                          className="text-slate-700 hover:text-blue-600 hover:underline truncate"
+                        >
+                          {contact.email}
+                        </a>
+                      </div>
+                    )}
+                    {contact.phone && (
+                      <div className="flex items-center space-x-2">
+                        <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        <a 
+                          href={`tel:${contact.phone}`}
+                          className="text-slate-700 hover:text-blue-600 hover:underline"
+                        >
+                          {contact.phone}
+                        </a>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Notes */}
+                  {contact.notes && (
+                    <div className="pt-2 border-t border-slate-100 text-[11px] text-slate-500 line-clamp-2">
+                      {contact.notes}
+                    </div>
+                  )}
+                </div>
               </div>
-            )}
-            {company.contact_phone && (
-              <div className="flex items-center space-x-1.5">
-                <Phone className="w-4 h-4 text-slate-400" />
-                <span>{company.contact_phone}</span>
-              </div>
-            )}
+            ))}
           </div>
         )}
       </div>
@@ -624,6 +806,20 @@ export const CompanyDetailPage: React.FC = () => {
           fetchCompanyData();
         }}
       />
+
+      {company && (
+        <ContactModal
+          isOpen={isContactModalOpen}
+          companyId={company.id}
+          companyName={company.name}
+          contact={editingContact}
+          onClose={() => {
+            setIsContactModalOpen(false);
+            setEditingContact(null);
+          }}
+          onSuccess={handleContactSuccess}
+        />
+      )}
     </div>
   );
 };
