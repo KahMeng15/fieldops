@@ -277,6 +277,33 @@ export const deleteDeployment = async (id: string) => {
   await api.delete(`/deployments/${id}`);
 };
 
+export interface PhaseRemarkItem {
+  id: string;
+  deployment_id: string;
+  phase: string;
+  remark: string;
+  author_id?: string;
+  author_name?: string;
+  is_archived: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export const getPhaseRemarks = async (deploymentId: string, phase?: string): Promise<PhaseRemarkItem[]> => {
+  const { data } = await api.get(`/deployments/${deploymentId}/phase-remarks`, {
+    params: phase ? { phase } : undefined
+  });
+  return data;
+};
+
+export const createPhaseRemark = async (
+  deploymentId: string, 
+  remarkData: { phase: string; remark: string }
+): Promise<PhaseRemarkItem> => {
+  const { data } = await api.post(`/deployments/${deploymentId}/phase-remarks`, remarkData);
+  return data;
+};
+
 export interface CredentialData {
   id?: string;
   deployment_id: string;
@@ -322,6 +349,39 @@ export const updateCredential = async (
 
 export const deleteCredential = async (credId: string) => {
   await api.delete(`/credentials/${credId}`);
+};
+
+export interface CredentialVersionItem {
+  id: string;
+  credential_id: string;
+  deployment_id: string;
+  version_number: number;
+  credential_type: string;
+  label: string;
+  changed_by_name?: string;
+  change_summary?: string;
+  created_at: string;
+  encrypted_payload?: string;
+}
+
+export const getCredentialVersions = async (credId: string): Promise<CredentialVersionItem[]> => {
+  const { data } = await api.get(`/credentials/${credId}/versions`);
+  return data;
+};
+
+export const revealCredentialVersion = async (versionId: string): Promise<{
+  credential: Record<string, any>;
+  version_number: number;
+  label: string;
+  credential_type: string;
+}> => {
+  const { data } = await api.post(`/credentials/versions/${versionId}/reveal`);
+  return data;
+};
+
+export const restoreCredentialVersion = async (versionId: string): Promise<CredentialData> => {
+  const { data } = await api.post(`/credentials/versions/${versionId}/restore`);
+  return data;
 };
 
 export interface ActivityLogItem {

@@ -47,7 +47,7 @@ export const EditDeploymentModal: React.FC<EditDeploymentModalProps> = ({
 
   const [typeOptions, setTypeOptions] = useState<string[]>(['Deployment', 'POC']);
   const [statusOptions, setStatusOptions] = useState<string[]>([
-    'Planning', 'Pre-POC', 'In Progress', 'Staging', 'Active', 'Completed'
+    'Cancelled', 'Planning', 'Pre-POC', 'In Progress', 'On Hold', 'Completed'
   ]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);

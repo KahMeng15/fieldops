@@ -180,3 +180,37 @@ class CredentialResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+class CredentialVersionResponse(BaseModel):
+    id: UUID
+    credential_id: UUID
+    deployment_id: UUID
+    version_number: int
+    credential_type: str
+    label: str
+    changed_by_name: Optional[str] = None
+    change_summary: Optional[str] = None
+    created_at: datetime
+    encrypted_payload: str = "********"  # Masked
+
+    class Config:
+        from_attributes = True
+
+class PhaseRemarkCreate(BaseModel):
+    phase: str
+    remark: str
+
+class PhaseRemarkResponse(BaseModel):
+    id: UUID
+    deployment_id: UUID
+    phase: str
+    remark: str
+    author_id: Optional[UUID] = None
+    author_name: Optional[str] = None
+    is_archived: bool = False
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+

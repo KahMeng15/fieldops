@@ -129,6 +129,7 @@ class Deployment(Base):
     loaned_items = relationship("LoanedItem", back_populates="deployment")
     credentials = relationship("Credential", back_populates="deployment")
     config_reports = relationship("ConfigReport", back_populates="deployment")
+    phase_remarks = relationship("DeploymentPhaseRemark", back_populates="deployment", cascade="all, delete-orphan", order_by="desc(DeploymentPhaseRemark.created_at)")
 
 class EngineerRoleType(str, enum.Enum):
     lead_engineer = "lead_engineer"
@@ -209,6 +210,24 @@ class Credential(Base):
 
     deployment = relationship("Deployment", back_populates="credentials")
     created_by = relationship("User")
+    versions = relationship("CredentialVersion", back_populates="credential", cascade="all, delete-orphan", order_by="desc(CredentialVersion.version_number)")
+
+class CredentialVersion(Base):
+    __tablename__ = "credential_versions"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    credential_id = Column(UUID(as_uuid=True), ForeignKey("credentials.id", ondelete="CASCADE"), nullable=False, index=True)
+    deployment_id = Column(UUID(as_uuid=True), ForeignKey("deployments.id", ondelete="CASCADE"), nullable=False, index=True)
+    version_number = Column(Integer, nullable=False)
+    credential_type = Column(String, nullable=False)
+    label = Column(String, nullable=False)
+    encrypted_payload = Column(LargeBinary, nullable=False)
+    changed_by_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    changed_by_name = Column(String, nullable=True)
+    change_summary = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    credential = relationship("Credential", back_populates="versions")
+    changed_by = relationship("User", foreign_keys=[changed_by_id])
 
 class AuditLog(Base):
     __tablename__ = "audit_logs"
@@ -254,3 +273,19 @@ class ConfigReport(Base):
 
     deployment = relationship("Deployment", back_populates="config_reports")
     uploaded_by = relationship("User")
+
+class DeploymentPhaseRemark(Base):
+    __tablename__ = "deployment_phase_remarks"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    deployment_id = Column(UUID(as_uuid=True), ForeignKey("deployments.id", ondelete="CASCADE"), nullable=False, index=True)
+    phase = Column(String, nullable=False, index=True)
+    remark = Column(Text, nullable=False)
+    author_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    author_name = Column(String, nullable=True)
+    is_archived = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    deployment = relationship("Deployment", back_populates="phase_remarks")
+    author = relationship("User", foreign_keys=[author_id])
+

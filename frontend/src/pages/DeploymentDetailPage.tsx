@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link, useNavigate, useBlocker } from 'react-router-dom';
 import { 
   Building2, 
   MapPin, 
@@ -9,6 +9,7 @@ import {
   ArrowLeft, 
   Copy, 
   Check, 
+  X,
   Eye, 
   EyeOff, 
   Calendar,
@@ -27,7 +28,9 @@ import {
   Server,
   History,
   KeyRound,
-  FolderOpen
+  FolderOpen,
+  MessageSquare,
+  AlertTriangle
 } from 'lucide-react';
 import { 
   getDeployment, 
@@ -37,14 +40,19 @@ import {
   updateDeployment, 
   deleteDeployment, 
   getDeploymentFieldSettings, 
+  getPhaseRemarks,
+  createPhaseRemark,
   type DeploymentData, 
-  type CredentialData 
+  type CredentialData,
+  type PhaseRemarkItem 
 } from '../api';
 import NewCredentialModal from '../components/NewCredentialModal';
 import EditCredentialModal from '../components/EditCredentialModal';
 import EditDeploymentModal from '../components/EditDeploymentModal';
 import DeploymentActivityModal from '../components/DeploymentActivityModal';
 import CredentialAccessLogsModal from '../components/CredentialAccessLogsModal';
+import PhaseRemarksHistoryModal from '../components/PhaseRemarksHistoryModal';
+import CredentialVersionsModal from '../components/CredentialVersionsModal';
 
 export const DeploymentDetailPage = () => {
   const { id } = useParams<{ id: string }>();
@@ -61,20 +69,112 @@ export const DeploymentDetailPage = () => {
   const [isEditCredModalOpen, setIsEditCredModalOpen] = useState(false);
   const [editingCred, setEditingCred] = useState<CredentialData | null>(null);
   const [editingPayload, setEditingPayload] = useState<Record<string, any> | null>(null);
+  const [selectedVersionCred, setSelectedVersionCred] = useState<CredentialData | null>(null);
+  const [isVersionsModalOpen, setIsVersionsModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isActivityModalOpen, setIsActivityModalOpen] = useState(false);
   const [isCredLogsModalOpen, setIsCredLogsModalOpen] = useState(false);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [statusUpdating, setStatusUpdating] = useState(false);
   const [statusOptions, setStatusOptions] = useState<string[]>([
-    'Planning', 'Pre-POC', 'In Progress', 'Staging', 'Active', 'Completed'
+    'Cancelled', 'Planning', 'Pre-POC', 'In Progress', 'On Hold', 'Completed'
   ]);
+  const [selectedPhase, setSelectedPhase] = useState<string>('Planning');
+  const [phaseRemarks, setPhaseRemarks] = useState<PhaseRemarkItem[]>([]);
+  const [loadingRemarks, setLoadingRemarks] = useState(false);
+  const [isEditingRemark, setIsEditingRemark] = useState(false);
+  const [remarkEditText, setRemarkEditText] = useState('');
+  const [isSubmittingRemark, setIsSubmittingRemark] = useState(false);
+  const [isPhaseRemarksHistoryModalOpen, setIsPhaseRemarksHistoryModalOpen] = useState(false);
+  const [pendingAction, setPendingAction] = useState<
+    | { type: 'NAVIGATION' }
+    | { type: 'CHANGE_STATUS'; status: string }
+    | { type: 'CANCEL_EDIT' }
+    | { type: 'VIEW_HISTORY' }
+    | null
+  >(null);
+
+  const currentActiveRemark = phaseRemarks.find(r => !r.is_archived) || null;
+  const originalRemarkText = currentActiveRemark?.remark || '';
+  const hasUnsavedChanges = isEditingRemark && remarkEditText !== originalRemarkText;
+
+  const blocker = useBlocker(
+    ({ currentLocation, nextLocation }) =>
+      hasUnsavedChanges && currentLocation.pathname !== nextLocation.pathname
+  );
+
+  useEffect(() => {
+    if (blocker.state === 'blocked') {
+      setPendingAction({ type: 'NAVIGATION' });
+    }
+  }, [blocker.state]);
+
+  // Warn on tab close / browser refresh / closing window
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasUnsavedChanges) {
+        e.preventDefault();
+        e.returnValue = '';
+        return '';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasUnsavedChanges]);
 
   useEffect(() => {
     const handleClickOutside = () => setOpenMenuId(null);
     window.addEventListener('click', handleClickOutside);
     return () => window.removeEventListener('click', handleClickOutside);
   }, []);
+
+  useEffect(() => {
+    if (deployment?.pre_poc_status) {
+      setSelectedPhase(deployment.pre_poc_status);
+    }
+  }, [deployment?.pre_poc_status]);
+
+  useEffect(() => {
+    setIsEditingRemark(false);
+    setRemarkEditText('');
+  }, [selectedPhase]);
+
+  const fetchPhaseRemarks = async (phaseName: string) => {
+    if (!id) return;
+    try {
+      setLoadingRemarks(true);
+      const data = await getPhaseRemarks(id, phaseName);
+      setPhaseRemarks(data || []);
+    } catch (err) {
+      console.error('Failed to fetch phase remarks', err);
+    } finally {
+      setLoadingRemarks(false);
+    }
+  };
+
+  useEffect(() => {
+    if (id && selectedPhase) {
+      fetchPhaseRemarks(selectedPhase);
+    }
+  }, [id, selectedPhase]);
+
+  const handleSaveNotepadRemark = async () => {
+    if (!id || !remarkEditText.trim()) return;
+    try {
+      setIsSubmittingRemark(true);
+      await createPhaseRemark(id, {
+        phase: selectedPhase,
+        remark: remarkEditText.trim()
+      });
+      await fetchPhaseRemarks(selectedPhase);
+      setIsEditingRemark(false);
+      setRemarkEditText('');
+    } catch (err: any) {
+      alert(err?.response?.data?.detail || 'Failed to save remark');
+    } finally {
+      setIsSubmittingRemark(false);
+    }
+  };
 
   const formatDate = (dateStr?: string) => {
     if (!dateStr) return 'N/A';
@@ -127,23 +227,85 @@ export const DeploymentDetailPage = () => {
 
   useEffect(() => {
     fetchDetails();
-    getDeploymentFieldSettings().then(settings => {
-      const sf = settings.fields.find(f => f.key === 'pre_poc_status');
+    getDeploymentFieldSettings().then((settings: any) => {
+      const sf = settings.fields?.find((f: any) => f.key === 'pre_poc_status');
       if (sf?.options?.length) setStatusOptions(sf.options);
     }).catch(() => {});
   }, [id]);
 
-  const handleStatusChange = async (newStatus: string) => {
+  const executeStatusChange = async (newStatus: string) => {
     if (!id || !deployment) return;
     try {
       setStatusUpdating(true);
       const updated = await updateDeployment(id, { pre_poc_status: newStatus });
-      setDeployment(prev => prev ? { ...prev, ...updated } : updated);
+      setDeployment((prev: any) => prev ? { ...prev, ...updated } : updated);
+      setSelectedPhase(newStatus);
+      fetchPhaseRemarks(newStatus);
     } catch (err) {
       alert('Failed to update deployment status');
     } finally {
       setStatusUpdating(false);
     }
+  };
+
+  const handleStatusChange = async (newStatus: string) => {
+    if (!id || !deployment) return;
+    if (hasUnsavedChanges && newStatus !== selectedPhase) {
+      setPendingAction({ type: 'CHANGE_STATUS', status: newStatus });
+      return;
+    }
+    await executeStatusChange(newStatus);
+  };
+
+  const handleConfirmSaveAndProceed = async () => {
+    if (!pendingAction) return;
+    try {
+      if (remarkEditText.trim()) {
+        setIsSubmittingRemark(true);
+        await createPhaseRemark(id!, {
+          phase: selectedPhase,
+          remark: remarkEditText.trim()
+        });
+        await fetchPhaseRemarks(selectedPhase);
+      }
+      setIsEditingRemark(false);
+      setRemarkEditText('');
+
+      if (pendingAction.type === 'NAVIGATION') {
+        blocker.proceed?.();
+      } else if (pendingAction.type === 'CHANGE_STATUS') {
+        await executeStatusChange(pendingAction.status);
+      } else if (pendingAction.type === 'VIEW_HISTORY') {
+        setIsPhaseRemarksHistoryModalOpen(true);
+      }
+    } catch (err: any) {
+      alert(err?.response?.data?.detail || 'Failed to save remark');
+    } finally {
+      setIsSubmittingRemark(false);
+      setPendingAction(null);
+    }
+  };
+
+  const handleConfirmDiscard = () => {
+    if (!pendingAction) return;
+    setIsEditingRemark(false);
+    setRemarkEditText('');
+
+    if (pendingAction.type === 'NAVIGATION') {
+      blocker.proceed?.();
+    } else if (pendingAction.type === 'CHANGE_STATUS') {
+      executeStatusChange(pendingAction.status);
+    } else if (pendingAction.type === 'VIEW_HISTORY') {
+      setIsPhaseRemarksHistoryModalOpen(true);
+    }
+    setPendingAction(null);
+  };
+
+  const handleCancelPendingAction = () => {
+    if (pendingAction?.type === 'NAVIGATION') {
+      blocker.reset?.();
+    }
+    setPendingAction(null);
   };
 
   const handleDeleteDeployment = async () => {
@@ -379,6 +541,17 @@ export const DeploymentDetailPage = () => {
                       type="button"
                       onClick={() => {
                         setOpenMenuId(null);
+                        setIsPhaseRemarksHistoryModalOpen(true);
+                      }}
+                      className="w-full text-left px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 flex items-center space-x-2 cursor-pointer border-t border-slate-100"
+                    >
+                      <MessageSquare className="w-3.5 h-3.5 text-indigo-500" />
+                      <span>Phase Remarks History</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOpenMenuId(null);
                         handleDeleteDeployment();
                       }}
                       className="w-full text-left px-3.5 py-2 text-xs font-medium text-red-600 hover:bg-red-50 flex items-center space-x-2 cursor-pointer border-t border-slate-100"
@@ -415,35 +588,7 @@ export const DeploymentDetailPage = () => {
                 </div>
               </div>
 
-              {/* Field 3: Status */}
-              <div className="space-y-1 pt-3">
-                <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 flex items-center space-x-1.5">
-                  <ShieldCheck className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Status</span>
-                </div>
-                <div className="space-y-1">
-                  <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold ${
-                    deployment.pre_poc_status === 'Completed' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
-                    deployment.pre_poc_status === 'Active' ? 'bg-blue-50 text-blue-700 border border-blue-200' :
-                    deployment.pre_poc_status === 'In Progress' || deployment.pre_poc_status === 'Staging' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
-                    'bg-slate-50 text-slate-700 border border-slate-200'
-                  }`}>
-                    {deployment.pre_poc_status || 'Planning'}
-                  </span>
-
-                  {(deployment.status_updated_at || deployment.status_updated_by_name) && (
-                    <div className="text-[11px] text-slate-500 flex items-center space-x-1 pt-0.5">
-                      <Clock className="w-3 h-3 text-slate-400 shrink-0" />
-                      <span className="truncate">
-                        Set {formatDateTime(deployment.status_updated_at)}
-                        {deployment.status_updated_by_name ? ` by ${deployment.status_updated_by_name}` : ''}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Field 4: Account Owner */}
+              {/* Field 3: Account Owner */}
               <div className="space-y-1 pt-3">
                 <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 flex items-center space-x-1.5">
                   <User className="w-3.5 h-3.5 text-slate-400" />
@@ -585,36 +730,15 @@ export const DeploymentDetailPage = () => {
                     Deployment Progress & Status
                   </h2>
                 </div>
-                <div className="text-xs text-slate-500 flex flex-wrap items-center gap-x-2 gap-y-1">
-                  <span>Current Phase: <strong className="text-slate-800 font-semibold">{deployment.pre_poc_status || 'Planning'}</strong></span>
-                  {(deployment.status_updated_at || deployment.status_updated_by_name) && (
-                    <>
-                      <span className="text-slate-300">•</span>
-                      <span className="flex items-center space-x-1">
-                        <Clock className="w-3 h-3 text-slate-400" />
-                        <span>
-                          Set {formatDateTime(deployment.status_updated_at)}
-                          {deployment.status_updated_by_name ? ` by ${deployment.status_updated_by_name}` : ''}
-                        </span>
-                      </span>
-                    </>
-                  )}
-                </div>
-              </div>
-
-              {/* Status Selector Dropdown */}
-              <div className="flex items-center space-x-2 self-start sm:self-auto">
-                <label className="text-xs font-medium text-slate-500 hidden sm:inline">Change Phase:</label>
-                <select
-                  value={deployment.pre_poc_status || 'Planning'}
-                  onChange={e => handleStatusChange(e.target.value)}
-                  disabled={statusUpdating}
-                  className="px-3 py-1.5 text-xs font-semibold border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 cursor-pointer shadow-2xs text-slate-800 disabled:opacity-50"
-                >
-                  {statusOptions.map(opt => (
-                    <option key={opt} value={opt}>{opt}</option>
-                  ))}
-                </select>
+                {(deployment.status_updated_at || deployment.status_updated_by_name) && (
+                  <div className="text-xs text-slate-500 flex items-center space-x-1 pt-0.5">
+                    <Clock className="w-3 h-3 text-slate-400" />
+                    <span>
+                      Set {formatDateTime(deployment.status_updated_at)}
+                      {deployment.status_updated_by_name ? ` by ${deployment.status_updated_by_name}` : ''}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -623,76 +747,115 @@ export const DeploymentDetailPage = () => {
               {(() => {
                 const currentStatus = deployment.pre_poc_status || 'Planning';
                 const currentStepIndex = Math.max(0, statusOptions.indexOf(currentStatus));
-                const totalSteps = statusOptions.length;
-                const progressPercent = totalSteps > 1 
-                  ? Math.round((currentStepIndex / (totalSteps - 1)) * 100)
-                  : 100;
+                const isCancelled = currentStatus === 'Cancelled';
+                const cancelledIsFirst = statusOptions[0] === 'Cancelled';
+                const normalSteps = statusOptions.filter(s => s !== 'Cancelled');
+                const currentNormalIndex = normalSteps.indexOf(currentStatus);
+                const progressPercent = isCancelled 
+                  ? 0 
+                  : currentNormalIndex >= 0 && normalSteps.length > 1
+                  ? Math.round((currentNormalIndex / (normalSteps.length - 1)) * 100)
+                  : currentNormalIndex === 0 ? 0 : 100;
+                const segmentColor = 
+                  currentStatus === 'Completed' 
+                    ? 'bg-emerald-600' 
+                    : currentStatus === 'On Hold' 
+                    ? 'bg-amber-500' 
+                    : 'bg-blue-600';
 
                 return (
                   <div className="space-y-4">
                     {/* Stepper nodes */}
                     <div className="overflow-x-auto pb-2 -mb-2">
-                      <div className="min-w-[500px] flex items-center justify-between relative px-4 pt-1 pb-2">
-                        {/* Background track */}
-                        <div className="absolute left-8 right-8 top-5 h-1 bg-slate-200 -z-0" />
-                        {/* Active Progress fill */}
-                        <div 
-                          className="absolute left-8 top-5 h-1 bg-blue-600 transition-all duration-300 -z-0"
-                          style={{ 
-                            width: totalSteps > 1 
-                              ? `calc(${(currentStepIndex / (totalSteps - 1)) * 100}% - ${(currentStepIndex / (totalSteps - 1)) * 16}px)` 
-                              : '100%' 
-                          }}
-                        />
-
+                      <div className="min-w-[550px] flex items-start w-full relative px-2 pt-1 pb-2">
                         {statusOptions.map((status, index) => {
-                          const isPast = index < currentStepIndex;
+                          const isLast = index === statusOptions.length - 1;
+                          const isPast = status !== 'Cancelled' && currentStatus !== 'Cancelled' && index < currentStepIndex;
                           const isCurrent = index === currentStepIndex;
 
-                          return (
-                            <button 
-                              key={status} 
-                              type="button"
-                              onClick={() => handleStatusChange(status)}
-                              disabled={statusUpdating}
-                              title={`Set status to ${status}`}
-                              className="flex flex-col items-center relative z-10 group cursor-pointer text-left focus:outline-none disabled:cursor-not-allowed"
-                            >
-                              {/* Circle node */}
-                              <div 
-                                className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs transition-all shadow-xs ${
-                                  isPast
-                                    ? 'bg-emerald-600 text-white ring-4 ring-emerald-50 group-hover:bg-emerald-700'
-                                    : isCurrent
-                                    ? 'bg-blue-600 text-white ring-4 ring-blue-100 ring-offset-1 scale-110 shadow-md'
-                                    : 'bg-white border-2 border-slate-300 text-slate-400 group-hover:border-slate-400 group-hover:text-slate-600'
-                                }`}
-                              >
-                                {isPast ? (
-                                  <Check className="w-4 h-4 stroke-[2.5]" />
-                                ) : (
-                                  <span>{index + 1}</span>
-                                )}
-                              </div>
+                          let circleStyle = 'bg-white border-2 border-slate-300 text-slate-400 group-hover:border-slate-400 group-hover:text-slate-600';
+                          let labelStyle = 'text-slate-400 group-hover:text-slate-600';
 
-                              {/* Label */}
-                              <div className="mt-2 text-center">
-                                <span 
-                                  className={`text-xs block font-semibold transition-colors ${
-                                    isCurrent 
-                                      ? 'text-blue-700 font-bold' 
-                                      : isPast 
-                                      ? 'text-slate-800' 
-                                      : 'text-slate-400 group-hover:text-slate-600'
-                                  }`}
+                          if (isCurrent) {
+                            if (status === 'Cancelled') {
+                              circleStyle = 'bg-red-600 text-white ring-4 ring-red-100 ring-offset-1 scale-110 shadow-md';
+                              labelStyle = 'text-red-600 font-bold';
+                            } else if (status === 'On Hold') {
+                              circleStyle = 'bg-amber-500 text-white ring-4 ring-amber-100 ring-offset-1 scale-110 shadow-md';
+                              labelStyle = 'text-amber-600 font-bold';
+                            } else if (status === 'Completed') {
+                              circleStyle = 'bg-emerald-600 text-white ring-4 ring-emerald-100 ring-offset-1 scale-110 shadow-md';
+                              labelStyle = 'text-emerald-600 font-bold';
+                            } else {
+                              circleStyle = 'bg-blue-600 text-white ring-4 ring-blue-100 ring-offset-1 scale-110 shadow-md';
+                              labelStyle = 'text-blue-700 font-bold';
+                            }
+                          } else if (status === 'Cancelled') {
+                            circleStyle = 'bg-white border-2 border-slate-300 text-slate-400 group-hover:border-red-400 group-hover:text-red-500';
+                            labelStyle = 'text-slate-400 group-hover:text-red-500';
+                          } else if (isPast) {
+                            circleStyle = 'bg-emerald-600 text-white ring-4 ring-emerald-50 group-hover:bg-emerald-700';
+                            labelStyle = 'text-slate-800 font-medium';
+                          }
+
+                          const stageNumber = cancelledIsFirst ? index : index + 1;
+                          const isSegmentActive = cancelledIsFirst
+                            ? index > 0 && !isCancelled && currentStepIndex > index
+                            : !isCancelled && currentStepIndex > index;
+
+                          return (
+                            <div key={status} className="relative flex-1 flex flex-col items-center">
+                              {/* Connecting track line to the next node (only rendered between nodes, never outside) */}
+                              {!isLast && (
+                                <div 
+                                  className="absolute top-5 left-1/2 w-full h-1 -z-0 -translate-y-1/2"
                                 >
-                                  {status}
-                                </span>
-                                <span className="text-[10px] text-slate-400 hidden sm:block">
-                                  {isCurrent ? 'Current' : isPast ? 'Done' : `Step ${index + 1}`}
-                                </span>
-                              </div>
-                            </button>
+                                  <div className="w-full h-full bg-slate-200">
+                                    <div 
+                                      className={`h-full transition-all duration-300 ${segmentColor}`}
+                                      style={{ width: isSegmentActive ? '100%' : '0%' }}
+                                    />
+                                  </div>
+                                </div>
+                              )}
+
+                              <button 
+                                type="button"
+                                disabled={statusUpdating}
+                                onClick={() => handleStatusChange(status)}
+                                title={`Set status to ${status}`}
+                                className="flex flex-col items-center relative z-10 group cursor-pointer text-center focus:outline-none p-1 rounded-lg transition-all disabled:opacity-50 w-full"
+                              >
+                                {/* Circle node */}
+                                <div 
+                                  className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs transition-all shadow-xs ${circleStyle}`}
+                                >
+                                  {status === 'Cancelled' ? (
+                                    <X className="w-4 h-4 stroke-[2.5]" />
+                                  ) : isPast ? (
+                                    <Check className="w-4 h-4 stroke-[2.5]" />
+                                  ) : (
+                                    <span>{stageNumber}</span>
+                                  )}
+                                </div>
+
+                                {/* Label */}
+                                <div className="mt-2 text-center w-full px-0.5">
+                                  <span className={`text-xs block font-semibold transition-colors truncate ${labelStyle}`}>
+                                    {status}
+                                  </span>
+                                  <span className="text-[10px] text-slate-400 hidden sm:block truncate">
+                                    {status === 'Cancelled'
+                                      ? 'Cancelled'
+                                      : isCurrent 
+                                      ? (status === 'On Hold' ? 'On Hold' : status === 'Completed' ? 'Completed' : 'Active') 
+                                      : isPast 
+                                      ? 'Done' 
+                                      : `Stage ${stageNumber}`}
+                                  </span>
+                                </div>
+                              </button>
+                            </div>
                           );
                         })}
                       </div>
@@ -700,8 +863,153 @@ export const DeploymentDetailPage = () => {
 
                     {/* Progress summary bar */}
                     <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between text-xs text-slate-500 px-1">
-                      <span>Progress: <strong className="text-slate-700 font-semibold">{progressPercent}%</strong> ({currentStepIndex + 1} of {totalSteps} phases)</span>
-                      <span className="text-slate-400 italic">Click any phase above to update status</span>
+                      {isCancelled ? (
+                        <span>Status: <strong className="text-red-600 font-semibold">Deployment Cancelled</strong></span>
+                      ) : (
+                        <span>Progress: <strong className="text-slate-700 font-semibold">{progressPercent}%</strong> ({currentNormalIndex + 1} of {normalSteps.length} phases)</span>
+                      )}
+                    </div>
+
+                    {/* Stage Remarks Notepad Card */}
+                    <div className="mt-4 pt-4 border-t border-slate-200">
+                      <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+                        <div className="flex items-center space-x-2">
+                          <MessageSquare className="w-4 h-4 text-indigo-600" />
+                          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800">
+                            Stage Remarks
+                          </h3>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (hasUnsavedChanges) {
+                              setPendingAction({ type: 'VIEW_HISTORY' });
+                            } else {
+                              setIsPhaseRemarksHistoryModalOpen(true);
+                            }
+                          }}
+                          className="inline-flex items-center space-x-1 text-xs font-medium text-slate-500 hover:text-indigo-600 hover:underline cursor-pointer ml-auto"
+                        >
+                          <History className="w-3.5 h-3.5" />
+                          <span>View All History</span>
+                        </button>
+                      </div>
+
+                      {(() => {
+                        const currentActiveRemark = phaseRemarks.find(r => !r.is_archived) || null;
+
+                        if (loadingRemarks) {
+                          return (
+                            <div className="text-center py-6 text-xs text-slate-400">
+                              Loading notepad...
+                            </div>
+                          );
+                        }
+
+                        if (isEditingRemark) {
+                          return (
+                            <div className="bg-white p-4 rounded-xl border-2 border-indigo-500/80 shadow-xs space-y-3 animate-in fade-in duration-150">
+                              <textarea
+                                autoFocus
+                                rows={4}
+                                value={remarkEditText}
+                                onChange={e => setRemarkEditText(e.target.value)}
+                                placeholder="Type stage remarks or technical notes here..."
+                                className="w-full text-xs text-slate-800 bg-transparent border-0 focus:ring-0 focus:outline-none resize-y leading-relaxed font-sans placeholder:text-slate-400"
+                              />
+
+                              <div className="flex items-center justify-between pt-2 border-t border-slate-100 flex-wrap gap-2">
+                                <span className="text-[11px] text-slate-400">
+                                  {currentActiveRemark 
+                                    ? 'Saving will update this notepad and archive the previous remark to history.' 
+                                    : 'Saving will create the stage notepad.'}
+                                </span>
+                                <div className="flex items-center space-x-2 ml-auto">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (hasUnsavedChanges) {
+                                        setPendingAction({ type: 'CANCEL_EDIT' });
+                                      } else {
+                                        setIsEditingRemark(false);
+                                        setRemarkEditText('');
+                                      }
+                                    }}
+                                    disabled={isSubmittingRemark}
+                                    className="px-3 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                                  >
+                                    Cancel
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={handleSaveNotepadRemark}
+                                    disabled={isSubmittingRemark || !remarkEditText.trim()}
+                                    className="inline-flex items-center space-x-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-lg shadow-2xs transition-all cursor-pointer"
+                                  >
+                                    <Check className="w-3.5 h-3.5" />
+                                    <span>{isSubmittingRemark ? 'Saving...' : 'Save Remark'}</span>
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        }
+
+                        if (currentActiveRemark && currentActiveRemark.remark) {
+                          return (
+                            <div 
+                              onClick={() => {
+                                setRemarkEditText(currentActiveRemark.remark);
+                                setIsEditingRemark(true);
+                              }}
+                              className="group relative bg-white hover:bg-slate-50/70 p-4 rounded-xl border border-slate-200/90 hover:border-indigo-300 transition-all cursor-pointer shadow-2xs space-y-2.5"
+                              title="Click to edit remark"
+                            >
+                              <div className="flex items-center justify-between text-[11px] text-slate-500">
+                                <div className="flex items-center space-x-1.5">
+                                  <User className="w-3.5 h-3.5 text-slate-400" />
+                                  <span>Last edited by <strong className="text-slate-800 font-semibold">{currentActiveRemark.author_name || 'Team Member'}</strong></span>
+                                  <span className="text-slate-300">•</span>
+                                  <Clock className="w-3.5 h-3.5 text-slate-400" />
+                                  <span>{formatDateTime(currentActiveRemark.updated_at || currentActiveRemark.created_at)}</span>
+                                </div>
+                                <span className="text-indigo-600 font-medium flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <Pencil className="w-3 h-3" />
+                                  <span>Click to edit</span>
+                                </span>
+                              </div>
+
+                              <div className="text-xs text-slate-800 whitespace-pre-wrap leading-relaxed font-sans min-h-[36px]">
+                                {currentActiveRemark.remark}
+                              </div>
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <div 
+                            onClick={() => {
+                              setRemarkEditText('');
+                              setIsEditingRemark(true);
+                            }}
+                            className="group relative bg-white hover:bg-indigo-50/30 p-5 rounded-xl border-2 border-dashed border-slate-200 hover:border-indigo-300 transition-all cursor-pointer text-center space-y-2 shadow-2xs"
+                            title="Click to add remarks"
+                          >
+                            <div className="w-8 h-8 rounded-full bg-slate-100 group-hover:bg-indigo-100 text-slate-400 group-hover:text-indigo-600 flex items-center justify-center mx-auto transition-colors">
+                              <Pencil className="w-3.5 h-3.5" />
+                            </div>
+                            <div>
+                              <p className="text-xs font-semibold text-slate-700 group-hover:text-indigo-600 transition-colors">
+                                No remarks recorded for this stage yet
+                              </p>
+                              <p className="text-[11px] text-slate-400 mt-0.5">
+                                Click anywhere here to write notes. Anyone can edit this notepad.
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
                 );
@@ -820,6 +1128,18 @@ export const DeploymentDetailPage = () => {
                                 >
                                   <Pencil className="w-3.5 h-3.5 text-blue-500" />
                                   <span>{isRevealing === cred.id ? 'Decrypting...' : 'Edit Credential'}</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setOpenMenuId(null);
+                                    setSelectedVersionCred(cred);
+                                    setIsVersionsModalOpen(true);
+                                  }}
+                                  className="w-full text-left px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 flex items-center space-x-2 cursor-pointer border-t border-slate-100"
+                                >
+                                  <History className="w-3.5 h-3.5 text-emerald-600" />
+                                  <span>Previous Credentials</span>
                                 </button>
                                 <button
                                   type="button"
@@ -946,8 +1266,8 @@ export const DeploymentDetailPage = () => {
           isOpen={isEditModalOpen}
           deployment={deployment}
           onClose={() => setIsEditModalOpen(false)}
-          onSuccess={(updated) => {
-            setDeployment(prev => prev ? { ...prev, ...updated } : updated);
+          onSuccess={(updated: any) => {
+            setDeployment((prev: any) => prev ? { ...prev, ...updated } : updated);
           }}
         />
       )}
@@ -970,6 +1290,90 @@ export const DeploymentDetailPage = () => {
           deploymentId={id}
           customerName={deployment.customer_name}
         />
+      )}
+
+      {/* Phase Remarks History Modal */}
+      {id && deployment && (
+        <PhaseRemarksHistoryModal
+          isOpen={isPhaseRemarksHistoryModalOpen}
+          onClose={() => setIsPhaseRemarksHistoryModalOpen(false)}
+          deploymentId={id}
+          customerName={deployment.customer_name}
+          statusOptions={statusOptions}
+        />
+      )}
+
+      {/* Credential Versions & Recovery Modal */}
+      {selectedVersionCred && (
+        <CredentialVersionsModal
+          isOpen={isVersionsModalOpen}
+          onClose={() => {
+            setIsVersionsModalOpen(false);
+            setSelectedVersionCred(null);
+          }}
+          credential={selectedVersionCred}
+          onRestored={(updatedCred) => {
+            setCredentials(prev => prev.map(c => c.id === updatedCred.id ? { ...c, ...updatedCred } : c));
+            if (updatedCred.id) {
+              setRevealedCreds(prev => {
+                const copy = { ...prev };
+                delete copy[updatedCred.id!];
+                return copy;
+              });
+            }
+          }}
+        />
+      )}
+
+      {/* Unsaved Remarks Confirmation Dialog */}
+      {pendingAction && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-150 p-6 space-y-4">
+            <div className="flex items-start space-x-3.5">
+              <div className="w-10 h-10 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="font-bold text-slate-900 text-base">Unsaved Stage Remarks</h3>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  You have unsaved changes in your stage remarks. Would you like to save your work before proceeding?
+                </p>
+              </div>
+            </div>
+
+            {remarkEditText.trim() && (
+              <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 text-xs text-slate-700 italic max-h-24 overflow-y-auto whitespace-pre-wrap">
+                "{remarkEditText}"
+              </div>
+            )}
+
+            <div className="flex items-center justify-end space-x-2 pt-2 border-t border-slate-100 flex-wrap gap-y-2">
+              <button
+                type="button"
+                onClick={handleCancelPendingAction}
+                className="px-3 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+              >
+                Keep Editing
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDiscard}
+                className="px-3 py-1.5 text-xs font-semibold text-rose-600 hover:text-rose-700 hover:bg-rose-50 border border-rose-200 rounded-lg transition-colors cursor-pointer"
+              >
+                Discard Changes
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmSaveAndProceed}
+                disabled={isSubmittingRemark || !remarkEditText.trim()}
+                className="inline-flex items-center space-x-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-lg shadow-2xs transition-all cursor-pointer"
+              >
+                <Check className="w-3.5 h-3.5" />
+                <span>Save & Proceed</span>
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -2,8 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import text, Column, String, func
 from app.db.base import get_db
-from app.models import Deployment, AuditLog, User, Company, Location, Credential
-from app.schemas import DeploymentSchema, DeploymentResponse
+from app.models import Deployment, AuditLog, User, Company, Location, Credential, DeploymentPhaseRemark
+from app.schemas import DeploymentSchema, DeploymentResponse, PhaseRemarkCreate, PhaseRemarkResponse
 from app.api.deps import get_current_user, require_permission
 from app.core.audit import parse_client_info, resolve_external_ip, is_internal_docker_ip
 from typing import List, Optional, Set, Any, Dict
@@ -169,6 +169,14 @@ async def update_deployment(
         raise HTTPException(404, "Deployment not found")
     
     data_dict = data.dict(exclude_unset=True)
+    if "pre_poc_status" in data_dict and data_dict["pre_poc_status"] != deployment.pre_poc_status:
+        old_phase = deployment.pre_poc_status
+        if old_phase:
+            db.query(DeploymentPhaseRemark).filter(
+                DeploymentPhaseRemark.deployment_id == deployment.id,
+                DeploymentPhaseRemark.phase == old_phase
+            ).update({"is_archived": True})
+
     if "pre_poc_status" in data_dict or "poc_status" in data_dict or "post_poc_status" in data_dict:
         deployment.status_updated_at = datetime.utcnow()
         deployment.status_updated_by_id = current_user.id
@@ -428,3 +436,74 @@ async def get_deployment_credential_logs(
         })
 
     return result
+
+@router.get("/{id}/phase-remarks", response_model=List[PhaseRemarkResponse])
+async def get_deployment_phase_remarks(
+    id: str,
+    phase: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    query = db.query(DeploymentPhaseRemark).filter(DeploymentPhaseRemark.deployment_id == id)
+    if phase:
+        query = query.filter(DeploymentPhaseRemark.phase == phase)
+    return query.order_by(DeploymentPhaseRemark.created_at.desc()).all()
+
+@router.post("/{id}/phase-remarks", response_model=PhaseRemarkResponse, status_code=201)
+async def create_deployment_phase_remark(
+    id: str,
+    data: PhaseRemarkCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    deployment = db.query(Deployment).filter(Deployment.id == id, Deployment.deleted_at == None).first()
+    if not deployment:
+        raise HTTPException(404, "Deployment not found")
+
+    # Discard existing active remark for this phase to archive
+    existing_active = db.query(DeploymentPhaseRemark).filter(
+        DeploymentPhaseRemark.deployment_id == deployment.id,
+        DeploymentPhaseRemark.phase == data.phase,
+        DeploymentPhaseRemark.is_archived == False
+    ).order_by(DeploymentPhaseRemark.created_at.desc()).all()
+
+    old_remark_text = existing_active[0].remark if existing_active else None
+    for prev_remark in existing_active:
+        prev_remark.is_archived = True
+
+    new_text = data.remark.strip()
+    remark_entry = DeploymentPhaseRemark(
+        deployment_id=deployment.id,
+        phase=data.phase,
+        remark=new_text,
+        author_id=current_user.id,
+        author_name=current_user.username,
+        is_archived=False
+    )
+    db.add(remark_entry)
+    db.commit()
+    db.refresh(remark_entry)
+
+    client_info = parse_client_info(request)
+    audit_log = AuditLog(
+        user_id=current_user.id,
+        action="update_phase_remark" if old_remark_text else "add_phase_remark",
+        resource_type="deployment",
+        resource_id=deployment.id,
+        ip_address=client_info["ip_address"],
+        old_value={"remark": old_remark_text} if old_remark_text else None,
+        new_value={
+            "item_name": deployment.customer_name,
+            "phase": data.phase,
+            "remark": new_text,
+            "author_name": current_user.username,
+            **client_info
+        },
+        notes=f"Updated notepad remark for stage '{data.phase}' on {deployment.customer_name} (previous version archived)" if old_remark_text else f"Added remark for stage '{data.phase}' on {deployment.customer_name}"
+    )
+    db.add(audit_log)
+    db.commit()
+
+    return remark_entry
+

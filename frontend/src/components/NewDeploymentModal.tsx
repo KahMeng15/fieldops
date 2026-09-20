@@ -570,7 +570,7 @@ export const NewDeploymentModal: React.FC<NewDeploymentModalProps> = ({
                       className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
                     >
                       <option value="">-- Select Status --</option>
-                      {(getField('pre_poc_status')?.options || ['Planning', 'Pre-POC', 'In Progress', 'Staging', 'Active', 'Completed']).map(opt => (
+                      {(getField('pre_poc_status')?.options || ['Cancelled', 'Planning', 'Pre-POC', 'In Progress', 'On Hold', 'Completed']).map(opt => (
                         <option key={opt} value={opt}>
                           {opt}
                         </option>

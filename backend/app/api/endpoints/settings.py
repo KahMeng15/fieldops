@@ -82,7 +82,7 @@ DEFAULT_DEPLOYMENT_SETTINGS: Dict[str, Any] = {
             "enabled": True,
             "required": False,
             "default_value": "Planning",
-            "options": ["Planning", "Pre-POC", "In Progress", "Staging", "Active", "Completed", "On Hold", "Cancelled"],
+            "options": ["Cancelled", "Planning", "Pre-POC", "In Progress", "On Hold", "Completed"],
             "allow_other": False,
             "system_fixed": False,
             "description": "Current progress or phase of the deployment"
