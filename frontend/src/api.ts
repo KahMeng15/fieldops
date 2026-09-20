@@ -138,6 +138,8 @@ export interface DeploymentFieldConfig {
   required: boolean;
   default_value: string;
   options?: string[];
+  allow_other?: boolean;
+  other_placeholder?: string;
   system_fixed?: boolean;
   description?: string;
 }

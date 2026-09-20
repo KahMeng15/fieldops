@@ -15,9 +15,13 @@ import {
   Sparkles,
   ArrowUp,
   ArrowDown,
-  Info
+  ChevronDown,
+  ChevronUp,
+  Database,
+  ChevronsDown,
+  ChevronsUp
 } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useBlocker } from 'react-router-dom';
 import { 
   getDeploymentFieldSettings, 
   updateDeploymentFieldSettings, 
@@ -41,17 +45,45 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [hasChanges, setHasChanges] = useState(false);
 
+  // Unsaved changes blocker for in-app navigation
+  const blocker = useBlocker(
+    ({ currentLocation, nextLocation }) =>
+      isAdmin && hasChanges && currentLocation.pathname !== nextLocation.pathname
+  );
+
+  // Unsaved changes warning for tab close / refresh
+  useEffect(() => {
+    if (!isAdmin) return;
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasChanges) {
+        e.preventDefault();
+        e.returnValue = '';
+        return '';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [isAdmin, hasChanges]);
+
+  // Collapsed state map: key -> boolean (true = collapsed/minimized, false = expanded)
+  const [collapsedCards, setCollapsedCards] = useState<Record<string, boolean>>({});
+
   // New option input states keyed by field key
   const [newOptionInputs, setNewOptionInputs] = useState<Record<string, string>>({});
 
   // New custom field state
   const [isAddingField, setIsAddingField] = useState(false);
   const [newFieldLabel, setNewFieldLabel] = useState('');
+  const [newFieldKey, setNewFieldKey] = useState('');
   const [newFieldType, setNewFieldType] = useState<'text' | 'select' | 'textarea'>('select');
   const [newFieldOptions, setNewFieldOptions] = useState<string[]>([]);
   const [newFieldOptionInput, setNewFieldOptionInput] = useState('');
   const [newFieldDefault, setNewFieldDefault] = useState('');
   const [newFieldRequired, setNewFieldRequired] = useState(false);
+  const [newFieldAllowOther, setNewFieldAllowOther] = useState(true);
+  const [newFieldOtherPlaceholder, setNewFieldOtherPlaceholder] = useState('');
 
   // User Settings State
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -61,6 +93,12 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
       setLoading(true);
       const data = await getDeploymentFieldSettings();
       setSettings(data);
+      // Start with all cards collapsed/minimized for compact overview
+      const initialCollapsed: Record<string, boolean> = {};
+      data.fields.forEach(f => {
+        initialCollapsed[f.key] = true;
+      });
+      setCollapsedCards(initialCollapsed);
       setHasChanges(false);
     } catch {
       setMessage({ type: 'error', text: 'Failed to load deployment field settings.' });
@@ -82,6 +120,31 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
     }
   }, [isAdmin]);
 
+  const toggleCardCollapse = (key: string) => {
+    setCollapsedCards(prev => ({
+      ...prev,
+      [key]: !prev[key]
+    }));
+  };
+
+  const handleCollapseAll = () => {
+    if (!settings) return;
+    const next: Record<string, boolean> = {};
+    settings.fields.forEach(f => {
+      next[f.key] = true;
+    });
+    setCollapsedCards(next);
+  };
+
+  const handleExpandAll = () => {
+    if (!settings) return;
+    const next: Record<string, boolean> = {};
+    settings.fields.forEach(f => {
+      next[f.key] = false;
+    });
+    setCollapsedCards(next);
+  };
+
   const handleMoveField = (index: number, direction: 'up' | 'down') => {
     if (!settings) return;
     const targetIndex = direction === 'up' ? index - 1 : index + 1;
@@ -92,6 +155,17 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
     newFields.splice(targetIndex, 0, moved);
 
     setSettings({ ...settings, fields: newFields });
+    setHasChanges(true);
+  };
+
+  const handleUpdateField = (index: number, updates: Partial<DeploymentFieldConfig>) => {
+    if (!settings) return;
+    setSettings(prev => {
+      if (!prev) return prev;
+      const newFields = [...prev.fields];
+      newFields[index] = { ...newFields[index], ...updates };
+      return { ...prev, fields: newFields };
+    });
     setHasChanges(true);
   };
 
@@ -112,38 +186,12 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
     setHasChanges(true);
   };
 
-  const handleToggleRequired = (key: string) => {
+  const handleToggleRequired = (index: number) => {
     if (!settings) return;
-    setSettings(prev => {
-      if (!prev) return prev;
-      return {
-        ...prev,
-        fields: prev.fields.map(f => {
-          if (f.key === key && !f.system_fixed) {
-            return { ...f, required: !f.required };
-          }
-          return f;
-        })
-      };
-    });
-    setHasChanges(true);
-  };
-
-  const handleDefaultValueChange = (key: string, value: string) => {
-    if (!settings) return;
-    setSettings(prev => {
-      if (!prev) return prev;
-      return {
-        ...prev,
-        fields: prev.fields.map(f => {
-          if (f.key === key) {
-            return { ...f, default_value: value };
-          }
-          return f;
-        })
-      };
-    });
-    setHasChanges(true);
+    const field = settings.fields[index];
+    if (field && !field.system_fixed) {
+      handleUpdateField(index, { required: !field.required });
+    }
   };
 
   const handleAddOption = (fieldKey: string) => {
@@ -179,7 +227,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
         fields: prev.fields.map(f => {
           if (f.key === fieldKey) {
             const updatedOpts = (f.options || []).filter(o => o !== optionToRemove);
-            const newDefault = f.default_value === optionToRemove ? (updatedOpts[0] || '') : f.default_value;
+            const newDefault = f.default_value === optionToRemove ? '' : f.default_value;
             return { ...f, options: updatedOpts, default_value: newDefault };
           }
           return f;
@@ -207,7 +255,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
   };
 
   const handleReset = async () => {
-    if (!window.confirm('Reset all deployment fields and default values to system defaults?')) {
+    if (!window.confirm('Reset all deployment fields, column names, and default values to system defaults?')) {
       return;
     }
     try {
@@ -227,16 +275,20 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
 
   const handleCreateCustomField = () => {
     if (!newFieldLabel.trim()) return;
-    const generatedKey = 'custom_' + newFieldLabel.trim().toLowerCase().replace(/[^a-z0-9]/g, '_');
+    const finalKey = newFieldKey.trim() 
+      ? newFieldKey.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_')
+      : 'custom_' + newFieldLabel.trim().toLowerCase().replace(/[^a-z0-9]/g, '_');
 
     const newField: DeploymentFieldConfig = {
-      key: generatedKey,
+      key: finalKey,
       label: newFieldLabel.trim(),
       type: newFieldType,
       enabled: true,
       required: newFieldRequired,
       default_value: newFieldDefault,
       options: newFieldType === 'select' ? newFieldOptions : undefined,
+      allow_other: newFieldType === 'select' ? newFieldAllowOther : undefined,
+      other_placeholder: newFieldType === 'select' ? newFieldOtherPlaceholder : undefined,
       system_fixed: false,
       description: 'Custom user-defined field'
     };
@@ -249,13 +301,17 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
       };
     });
 
+    setCollapsedCards(prev => ({ ...prev, [finalKey]: false }));
     setIsAddingField(false);
     setNewFieldLabel('');
+    setNewFieldKey('');
     setNewFieldType('select');
     setNewFieldOptions([]);
     setNewFieldOptionInput('');
     setNewFieldDefault('');
     setNewFieldRequired(false);
+    setNewFieldAllowOther(true);
+    setNewFieldOtherPlaceholder('');
     setHasChanges(true);
   };
 
@@ -285,7 +341,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
             </h1>
             <p className="text-sm text-slate-500">
               {isAdmin
-                ? 'Configure deployment record fields, arrange display order, and define default values.'
+                ? 'Configure deployment record fields, edit database column mappings, arrange display order, and define default values.'
                 : 'Manage your user profile and account preferences.'}
             </p>
           </div>
@@ -368,7 +424,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
 
       {/* ADMIN SETTINGS VIEW */}
       {isAdmin && (
-        <div className="space-y-6">
+        <div className="space-y-5">
           {/* Subheader bar */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-slate-900 text-white p-4 sm:p-5 rounded-xl shadow-md">
             <div>
@@ -377,7 +433,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
                 <h2 className="text-lg font-bold">Deployment Record Fields Manager</h2>
               </div>
               <p className="text-xs text-slate-400 mt-1 max-w-xl">
-                Customize which fields appear on deployment records, rearrange their order, configure default values, and edit allowed options.
+                Customize field display names, database columns, enable/disable status, display sequence, default values, and &ldquo;Other&rdquo; write-in options.
               </p>
             </div>
 
@@ -415,16 +471,31 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
             </div>
           </div>
 
-          {/* Explanatory Guide Box */}
-          <div className="p-4 bg-blue-50/70 border border-blue-200 rounded-xl flex items-start space-x-3 text-xs text-blue-950">
-            <Info className="w-4 h-4 text-blue-600 mt-0.5 shrink-0" />
-            <div className="space-y-1">
-              <p>
-                <strong>What does &ldquo;Included in Record&rdquo; mean?</strong> It controls whether a field is active and shown when creating and managing deployment records. When toggled <em>Removed / Hidden</em>, the field is excluded from new deployment creation forms and record views so teams only see relevant inputs.
-              </p>
-              <p>
-                <strong>Field Ordering:</strong> Use the <span className="inline-flex items-center px-1.5 py-0.5 bg-white border border-blue-200 rounded font-semibold text-[11px]">&uarr;</span> and <span className="inline-flex items-center px-1.5 py-0.5 bg-white border border-blue-200 rounded font-semibold text-[11px]">&darr;</span> buttons on each card to change the order fields appear on the deployment form.
-              </p>
+          {/* Clean Top Toolbar: Field count and Expand/Collapse Controls (Note card removed) */}
+          <div className="flex items-center justify-between px-1">
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+              {settings?.fields.length || 0} Configured Fields
+            </span>
+
+            <div className="flex items-center space-x-2">
+              <button
+                type="button"
+                onClick={handleCollapseAll}
+                className="flex items-center space-x-1 px-2.5 py-1 text-xs font-medium text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors cursor-pointer shadow-2xs"
+                title="Minimize all field cards"
+              >
+                <ChevronsUp className="w-3.5 h-3.5" />
+                <span>Collapse All</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleExpandAll}
+                className="flex items-center space-x-1 px-2.5 py-1 text-xs font-medium text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors cursor-pointer shadow-2xs"
+                title="Expand all field cards"
+              >
+                <ChevronsDown className="w-3.5 h-3.5" />
+                <span>Expand All</span>
+              </button>
             </div>
           </div>
 
@@ -433,28 +504,35 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
               Loading deployment fields configuration...
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-3">
               {settings?.fields.map((field, index) => {
                 const isFixed = field.system_fixed;
                 const isEnabled = field.enabled;
                 const isSelect = field.type === 'select';
+                const isCollapsed = collapsedCards[field.key] ?? false;
                 const totalFields = settings.fields.length;
 
                 return (
                   <div
                     key={field.key}
-                    className={`border rounded-xl transition-all ${
+                    className={`border rounded-xl transition-all shadow-xs overflow-hidden ${
                       isEnabled
-                        ? 'bg-white border-slate-200 shadow-sm'
-                        : 'bg-slate-50/80 border-slate-200/60 opacity-75'
+                        ? 'bg-white border-slate-200 hover:border-slate-300'
+                        : 'bg-slate-50 border-slate-200/80 opacity-80'
                     }`}
                   >
-                    {/* Field Card Header */}
-                    <div className="p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100">
-                      <div className="flex items-start space-x-3.5">
-                        {/* Order & Reordering Controls */}
-                        <div className="flex flex-col items-center space-y-1 shrink-0 mt-0.5">
-                          <span className="text-[11px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                    {/* Compact Card Header (Always visible & interactive) */}
+                    <div 
+                      onClick={() => toggleCardCollapse(field.key)}
+                      className="p-3.5 sm:p-4 flex flex-col md:flex-row md:items-center justify-between gap-3 cursor-pointer hover:bg-slate-50/80 select-none transition-colors"
+                    >
+                      <div className="flex items-center space-x-3.5 min-w-0">
+                        {/* Order Number & Reorder Arrows */}
+                        <div 
+                          onClick={(e) => e.stopPropagation()} 
+                          className="flex items-center space-x-1 shrink-0"
+                        >
+                          <span className="text-[11px] font-bold text-slate-600 bg-slate-100 px-2 py-1 rounded border border-slate-200 min-w-[28px] text-center">
                             #{index + 1}
                           </span>
                           <div className="flex items-center space-x-0.5 bg-slate-100 p-0.5 rounded border border-slate-200">
@@ -463,7 +541,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
                               disabled={index === 0}
                               onClick={() => handleMoveField(index, 'up')}
                               title="Move field up"
-                              className="p-1 rounded text-slate-500 hover:text-blue-600 hover:bg-white disabled:opacity-30 disabled:pointer-events-none transition-colors cursor-pointer"
+                              className="p-1 rounded text-slate-500 hover:text-blue-600 hover:bg-white disabled:opacity-25 disabled:pointer-events-none transition-colors cursor-pointer"
                             >
                               <ArrowUp className="w-3 h-3" />
                             </button>
@@ -472,54 +550,78 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
                               disabled={index === totalFields - 1}
                               onClick={() => handleMoveField(index, 'down')}
                               title="Move field down"
-                              className="p-1 rounded text-slate-500 hover:text-blue-600 hover:bg-white disabled:opacity-30 disabled:pointer-events-none transition-colors cursor-pointer"
+                              className="p-1 rounded text-slate-500 hover:text-blue-600 hover:bg-white disabled:opacity-25 disabled:pointer-events-none transition-colors cursor-pointer"
                             >
                               <ArrowDown className="w-3 h-3" />
                             </button>
                           </div>
                         </div>
 
-                        <div>
-                          <div className="flex items-center space-x-2">
-                            <span className="font-semibold text-slate-900 text-base">
+                        {/* Title, Column Key, Type Badge & Badges */}
+                        <div className="min-w-0 truncate">
+                          <div className="flex items-center space-x-2 flex-wrap gap-y-1">
+                            <span className="font-semibold text-slate-900 text-sm sm:text-base truncate">
                               {field.label}
                             </span>
-                            <span className="text-[11px] font-mono px-2 py-0.5 bg-slate-100 text-slate-600 rounded border border-slate-200">
-                              {field.key}
+                            <span className="text-[11px] font-mono px-2 py-0.5 bg-slate-100 text-slate-600 rounded border border-slate-200 flex items-center space-x-1">
+                              <Database className="w-2.5 h-2.5 text-slate-400" />
+                              <span>{field.key}</span>
                             </span>
-                            <span className="text-[11px] font-medium px-2 py-0.5 bg-blue-50 text-blue-700 rounded border border-blue-200 uppercase">
+                            <span className="text-[10px] font-semibold px-2 py-0.5 bg-blue-50 text-blue-700 rounded border border-blue-200 uppercase tracking-wide">
                               {field.type}
                             </span>
+                            {field.allow_other && (
+                              <span className="text-[10px] font-semibold px-1.5 py-0.5 bg-purple-50 text-purple-700 rounded border border-purple-200">
+                                Allows &ldquo;Other&rdquo;
+                              </span>
+                            )}
                             {isFixed && (
-                              <span className="text-[11px] font-medium px-2 py-0.5 bg-amber-50 text-amber-700 rounded border border-amber-200 flex items-center space-x-1">
-                                <Lock className="w-3 h-3" />
-                                <span>Core Required</span>
+                              <span className="text-[10px] font-semibold px-1.5 py-0.5 bg-amber-50 text-amber-700 rounded border border-amber-200 flex items-center space-x-1">
+                                <Lock className="w-2.5 h-2.5" />
+                                <span>Core</span>
                               </span>
                             )}
                           </div>
-                          <p className="text-xs text-slate-500 mt-0.5">
-                            {field.description || 'Configurable deployment record property'}
-                          </p>
+                          {isCollapsed && (
+                            <p className="text-[11px] text-slate-400 truncate mt-0.5">
+                              {isSelect 
+                                ? `${field.options?.length || 0} options${field.allow_other ? ' + Other' : ''} • Default: "${field.default_value || 'None'}"`
+                                : field.default_value ? `Default: "${field.default_value}"` : 'No default value set'}
+                            </p>
+                          )}
                         </div>
                       </div>
 
-                      {/* Field Status & Inclusion Toggles */}
-                      <div className="flex items-center space-x-3 shrink-0">
-                        {/* Include / Remove Toggle */}
-                        <div className="flex items-center space-x-2 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200">
-                          <span className="text-xs font-medium text-slate-700">
-                            {isEnabled ? 'Included in Record' : 'Removed / Hidden'}
+                      {/* Header Right Actions */}
+                      <div 
+                        onClick={(e) => e.stopPropagation()} 
+                        className="flex items-center space-x-3 shrink-0 self-end md:self-auto"
+                      >
+                        {/* Enabled / Disabled Toggle Pill */}
+                        <div className="flex items-center space-x-2 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">
+                          <span 
+                            className={`text-xs font-semibold ${
+                              isEnabled ? 'text-emerald-700' : 'text-slate-500'
+                            }`}
+                          >
+                            {isEnabled ? 'Enabled' : 'Disabled'}
                           </span>
                           <button
                             type="button"
                             disabled={isFixed}
                             onClick={() => handleToggleEnabled(field.key)}
-                            title={isFixed ? 'Core field cannot be removed' : isEnabled ? 'Click to remove from records' : 'Click to include in records'}
+                            title={
+                              isFixed
+                                ? 'Core required field cannot be disabled'
+                                : isEnabled
+                                ? 'Click to disable'
+                                : 'Click to enable'
+                            }
                             className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
                               isFixed
-                                ? 'bg-blue-600 opacity-60 cursor-not-allowed'
+                                ? 'bg-emerald-600 opacity-60 cursor-not-allowed'
                                 : isEnabled
-                                ? 'bg-blue-600'
+                                ? 'bg-emerald-600'
                                 : 'bg-slate-300'
                             }`}
                           >
@@ -531,24 +633,77 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
                           </button>
                         </div>
 
-                        {/* Custom field delete */}
+                        {/* Delete Custom Field */}
                         {!isFixed && field.key.startsWith('custom_') && (
                           <button
                             type="button"
                             onClick={() => handleDeleteField(field.key)}
-                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors cursor-pointer"
+                            className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors cursor-pointer"
                             title="Delete custom field"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
                         )}
+
+                        {/* Expand / Minimize Toggle Button */}
+                        <button
+                          type="button"
+                          onClick={() => toggleCardCollapse(field.key)}
+                          className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                          title={isCollapsed ? 'Expand card' : 'Minimize card'}
+                        >
+                          {isCollapsed ? (
+                            <ChevronDown className="w-5 h-5" />
+                          ) : (
+                            <ChevronUp className="w-5 h-5 text-blue-600" />
+                          )}
+                        </button>
                       </div>
                     </div>
 
-                    {/* Field Options & Default Value Body (Visible when included) */}
-                    {isEnabled && (
-                      <div className="p-4 sm:p-5 bg-slate-50/50 space-y-4">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Expanded Detail View */}
+                    {!isCollapsed && (
+                      <div className="p-4 sm:p-5 bg-slate-50/70 border-t border-slate-100 space-y-5 animate-in fade-in duration-100">
+                        {/* Row 1: Field Name and Database Column Inputs */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                              Field Display Name *
+                            </label>
+                            <input
+                              type="text"
+                              value={field.label}
+                              onChange={(e) => handleUpdateField(index, { label: e.target.value })}
+                              placeholder="e.g. Deployment Type"
+                              className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-medium text-slate-900"
+                            />
+                            <p className="text-[11px] text-slate-500 mt-1">
+                              Label displayed on UI forms, tables, and detail screens.
+                            </p>
+                          </div>
+
+                          <div>
+                            <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                              Database Column (Key) *
+                            </label>
+                            <div className="relative">
+                              <Database className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+                              <input
+                                type="text"
+                                value={field.key}
+                                onChange={(e) => handleUpdateField(index, { key: e.target.value })}
+                                placeholder="e.g. deployment_type"
+                                className="w-full pl-9 pr-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-slate-800"
+                              />
+                            </div>
+                            <p className="text-[11px] text-slate-500 mt-1">
+                              Database column identifier for API request/response mapping.
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Row 2: Default Value and Requirement */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1 border-t border-slate-200/70">
                           {/* Default Value Configurator */}
                           <div>
                             <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
@@ -557,7 +712,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
                             {isSelect ? (
                               <select
                                 value={field.default_value}
-                                onChange={(e) => handleDefaultValueChange(field.key, e.target.value)}
+                                onChange={(e) => handleUpdateField(index, { default_value: e.target.value })}
                                 className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-medium text-slate-800"
                               >
                                 <option value="">(No Default / Empty)</option>
@@ -566,52 +721,53 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
                                     {opt} (Default)
                                   </option>
                                 ))}
+                                {field.allow_other && (
+                                  <option value="Other">Other (Custom Write-in)</option>
+                                )}
                               </select>
                             ) : (
                               <input
                                 type="text"
                                 value={field.default_value}
-                                onChange={(e) => handleDefaultValueChange(field.key, e.target.value)}
+                                onChange={(e) => handleUpdateField(index, { default_value: e.target.value })}
                                 placeholder="Leave blank for no default..."
                                 className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-800"
                               />
                             )}
                             <p className="text-[11px] text-slate-500 mt-1">
-                              This value will be automatically selected when creating a new deployment.
+                              Automatically selected when creating a new deployment.
                             </p>
                           </div>
 
-                          {/* Requirement toggle */}
+                          {/* Requirement toggle & Description */}
                           <div>
                             <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-                              Required Field
+                              Requirement & Validation
                             </label>
-                            <div className="flex items-center space-x-3 pt-1">
-                              <label className="flex items-center space-x-2 text-sm text-slate-700 cursor-pointer">
-                                <input
-                                  type="checkbox"
-                                  disabled={isFixed}
-                                  checked={field.required}
-                                  onChange={() => handleToggleRequired(field.key)}
-                                  className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 disabled:opacity-50"
-                                />
-                                <span className="font-medium">
-                                  {field.required ? 'Mandatory for new records' : 'Optional field'}
-                                </span>
-                              </label>
-                            </div>
-                            <p className="text-[11px] text-slate-500 mt-1">
+                            <label className="flex items-center space-x-2 text-sm text-slate-700 cursor-pointer pt-1">
+                              <input
+                                type="checkbox"
+                                disabled={isFixed}
+                                checked={field.required}
+                                onChange={() => handleToggleRequired(index)}
+                                className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 disabled:opacity-50"
+                              />
+                              <span className="font-medium">
+                                {field.required ? 'Mandatory field (Required)' : 'Optional field'}
+                              </span>
+                            </label>
+                            <p className="text-[11px] text-slate-500 mt-2">
                               {isFixed
                                 ? 'This system field is always required.'
-                                : 'If checked, users must provide a value before saving.'}
+                                : 'Users must complete this field before saving a deployment.'}
                             </p>
                           </div>
                         </div>
 
                         {/* Selectable Options Manager (for select fields) */}
                         {isSelect && (
-                          <div className="pt-3 border-t border-slate-200">
-                            <div className="flex items-center justify-between mb-2">
+                          <div className="pt-3 border-t border-slate-200/70 space-y-3">
+                            <div className="flex items-center justify-between">
                               <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider">
                                 Allowed Values / Options ({field.options?.length || 0})
                               </label>
@@ -621,7 +777,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
                             </div>
 
                             {/* Option Chips */}
-                            <div className="flex flex-wrap gap-2 mb-3">
+                            <div className="flex flex-wrap gap-2 mb-2">
                               {(field.options || []).map((option) => {
                                 const isCurrentDefault = field.default_value === option;
                                 return (
@@ -650,13 +806,19 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
                                   </span>
                                 );
                               })}
+
+                              {field.allow_other && (
+                                <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold bg-purple-50 text-purple-700 border border-purple-300 border-dashed">
+                                  + &ldquo;Other&rdquo; (Custom Write-in)
+                                </span>
+                              )}
                             </div>
 
                             {/* Add Option Input */}
                             <div className="flex items-center space-x-2 max-w-md">
                               <input
                                 type="text"
-                                placeholder={`Add new ${field.label.toLowerCase()} option...`}
+                                placeholder={`Add new option for ${field.label}...`}
                                 value={newOptionInputs[field.key] || ''}
                                 onChange={(e) =>
                                   setNewOptionInputs((prev) => ({ ...prev, [field.key]: e.target.value }))
@@ -678,8 +840,52 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
                                 <span>Add Option</span>
                               </button>
                             </div>
+
+                            {/* Definition of "Other" option / write-in field */}
+                            <div className="mt-3 pt-3 border-t border-slate-200/70 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3 rounded-lg border border-slate-200">
+                              <div>
+                                <label className="flex items-center space-x-2 text-xs font-semibold text-slate-800 cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={field.allow_other ?? false}
+                                    onChange={(e) => handleUpdateField(index, { allow_other: e.target.checked })}
+                                    className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
+                                  />
+                                  <span>Allow &ldquo;Other&rdquo; Custom Write-in</span>
+                                </label>
+                                <p className="text-[11px] text-slate-500 mt-0.5 ml-6">
+                                  Adds an &ldquo;Other&rdquo; choice to the dropdown so users can type a custom unlisted value.
+                                </p>
+                              </div>
+
+                              {field.allow_other && (
+                                <div className="sm:w-72">
+                                  <input
+                                    type="text"
+                                    value={field.other_placeholder || ''}
+                                    onChange={(e) => handleUpdateField(index, { other_placeholder: e.target.value })}
+                                    placeholder="Placeholder text (e.g. Please specify other...)"
+                                    className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 text-slate-800"
+                                  />
+                                </div>
+                              )}
+                            </div>
                           </div>
                         )}
+
+                        {/* Description field */}
+                        <div className="pt-2 border-t border-slate-200/70">
+                          <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                            Field Description / Help Note
+                          </label>
+                          <input
+                            type="text"
+                            value={field.description || ''}
+                            onChange={(e) => handleUpdateField(index, { description: e.target.value })}
+                            placeholder="Help text or explanation for this field..."
+                            className="w-full px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-700"
+                          />
+                        </div>
                       </div>
                     )}
                   </div>
@@ -703,17 +909,35 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
                     </button>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div>
                       <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
-                        Field Label *
+                        Field Display Name *
                       </label>
                       <input
                         type="text"
-                        placeholder="e.g. SLA Tier or Environment Region"
+                        placeholder="e.g. SLA Tier"
                         value={newFieldLabel}
-                        onChange={(e) => setNewFieldLabel(e.target.value)}
+                        onChange={(e) => {
+                          setNewFieldLabel(e.target.value);
+                          if (!newFieldKey) {
+                            setNewFieldKey('custom_' + e.target.value.toLowerCase().replace(/[^a-z0-9]/g, '_'));
+                          }
+                        }}
                         className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                        Database Column Name *
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. custom_sla_tier"
+                        value={newFieldKey}
+                        onChange={(e) => setNewFieldKey(e.target.value)}
+                        className="w-full px-3 py-2 text-sm font-mono border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                       />
                     </div>
 
@@ -734,57 +958,81 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
                   </div>
 
                   {newFieldType === 'select' && (
-                    <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-2">
-                      <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider">
-                        Initial Options
-                      </label>
-                      <div className="flex flex-wrap gap-1.5 mb-2">
-                        {newFieldOptions.map((opt) => (
-                          <span
-                            key={opt}
-                            className="inline-flex items-center space-x-1 px-2.5 py-1 rounded bg-white border border-slate-300 text-xs font-medium text-slate-700"
-                          >
-                            <span>{opt}</span>
-                            <button
-                              type="button"
-                              onClick={() => setNewFieldOptions((prev) => prev.filter((o) => o !== opt))}
-                              className="text-slate-400 hover:text-red-600 ml-1 cursor-pointer"
+                    <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+                          Initial Options
+                        </label>
+                        <div className="flex flex-wrap gap-1.5 mb-2">
+                          {newFieldOptions.map((opt) => (
+                            <span
+                              key={opt}
+                              className="inline-flex items-center space-x-1 px-2.5 py-1 rounded bg-white border border-slate-300 text-xs font-medium text-slate-700"
                             >
-                              &times;
-                            </button>
-                          </span>
-                        ))}
-                      </div>
+                              <span>{opt}</span>
+                              <button
+                                type="button"
+                                onClick={() => setNewFieldOptions((prev) => prev.filter((o) => o !== opt))}
+                                className="text-slate-400 hover:text-red-600 ml-1 cursor-pointer"
+                              >
+                                &times;
+                              </button>
+                            </span>
+                          ))}
+                        </div>
 
-                      <div className="flex items-center space-x-2 max-w-sm">
-                        <input
-                          type="text"
-                          placeholder="Add option..."
-                          value={newFieldOptionInput}
-                          onChange={(e) => setNewFieldOptionInput(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault();
+                        <div className="flex items-center space-x-2 max-w-sm">
+                          <input
+                            type="text"
+                            placeholder="Add option..."
+                            value={newFieldOptionInput}
+                            onChange={(e) => setNewFieldOptionInput(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                if (newFieldOptionInput.trim()) {
+                                  setNewFieldOptions((prev) => [...prev, newFieldOptionInput.trim()]);
+                                  setNewFieldOptionInput('');
+                                }
+                              }
+                            }}
+                            className="flex-1 px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
                               if (newFieldOptionInput.trim()) {
                                 setNewFieldOptions((prev) => [...prev, newFieldOptionInput.trim()]);
                                 setNewFieldOptionInput('');
                               }
-                            }
-                          }}
-                          className="flex-1 px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (newFieldOptionInput.trim()) {
-                              setNewFieldOptions((prev) => [...prev, newFieldOptionInput.trim()]);
-                              setNewFieldOptionInput('');
-                            }
-                          }}
-                          className="px-3 py-1.5 text-xs font-medium bg-slate-200 text-slate-700 hover:bg-slate-300 rounded-lg cursor-pointer"
-                        >
-                          Add
-                        </button>
+                            }}
+                            className="px-3 py-1.5 text-xs font-medium bg-slate-200 text-slate-700 hover:bg-slate-300 rounded-lg cursor-pointer"
+                          >
+                            Add
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Allow Other for custom field */}
+                      <div className="pt-2 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <label className="flex items-center space-x-2 text-xs font-medium text-slate-700 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={newFieldAllowOther}
+                            onChange={(e) => setNewFieldAllowOther(e.target.checked)}
+                            className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
+                          />
+                          <span>Allow &ldquo;Other&rdquo; custom write-in</span>
+                        </label>
+                        {newFieldAllowOther && (
+                          <input
+                            type="text"
+                            value={newFieldOtherPlaceholder}
+                            onChange={(e) => setNewFieldOtherPlaceholder(e.target.value)}
+                            placeholder="Placeholder for other..."
+                            className="sm:w-60 px-2 py-1 text-xs bg-white border border-slate-300 rounded"
+                          />
+                        )}
                       </div>
                     </div>
                   )}
@@ -819,6 +1067,42 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Unsaved Changes Confirmation Modal */}
+      {blocker.state === 'blocked' && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-md w-full p-6 animate-in zoom-in-95 duration-150">
+            <div className="flex items-center space-x-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center text-amber-600 shrink-0">
+                <AlertCircle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Unsaved Changes</h3>
+                <p className="text-xs text-slate-500">You have unsaved changes in deployment settings.</p>
+              </div>
+            </div>
+            <p className="text-sm text-slate-600 mb-6">
+              Are you sure you want to leave this page? Any unsaved modifications to deployment fields, database column names, or field ordering will be discarded.
+            </p>
+            <div className="flex items-center justify-end space-x-3">
+              <button
+                type="button"
+                onClick={() => blocker.reset()}
+                className="px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+              >
+                Stay on Page
+              </button>
+              <button
+                type="button"
+                onClick={() => blocker.proceed()}
+                className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg shadow-sm transition-all cursor-pointer"
+              >
+                Discard & Leave
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

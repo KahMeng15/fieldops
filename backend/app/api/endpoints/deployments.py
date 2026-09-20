@@ -1,13 +1,24 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
+from sqlalchemy import text, Column, String
 from app.db.base import get_db
 from app.models import Deployment, AuditLog, User
 from app.schemas import DeploymentSchema, DeploymentResponse
 from app.api.deps import get_current_user, require_permission
-from typing import List, Optional
+from typing import List, Optional, Set
 from datetime import datetime
 
 router = APIRouter()
+
+def sync_orm_columns(db: Session) -> Set[str]:
+    cols_res = db.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name = 'deployments'"))
+    cols = set()
+    for row in cols_res:
+        col_name = row[0]
+        cols.add(col_name)
+        if not hasattr(Deployment, col_name):
+            setattr(Deployment, col_name, Column(String))
+    return cols
 
 @router.get("/", response_model=List[DeploymentResponse])
 async def list_deployments(
@@ -18,6 +29,7 @@ async def list_deployments(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    sync_orm_columns(db)
     query = db.query(Deployment).filter(Deployment.deleted_at == None)
     if customer:
         query = query.filter(Deployment.customer_name.ilike(f"%{customer}%"))
@@ -32,7 +44,9 @@ async def create_deployment(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(["create_deployment"]))
 ):
-    deployment = Deployment(**data.dict(), created_by_id=current_user.id)
+    actual_db_cols = sync_orm_columns(db)
+    payload_data = {k: v for k, v in data.dict().items() if k in actual_db_cols}
+    deployment = Deployment(**payload_data, created_by_id=current_user.id)
     db.add(deployment)
     db.commit()
     db.refresh(deployment)
@@ -56,6 +70,7 @@ async def get_deployment(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    sync_orm_columns(db)
     deployment = db.query(Deployment).filter(Deployment.id == id, Deployment.deleted_at == None).first()
     if not deployment:
         raise HTTPException(404, "Deployment not found")
@@ -69,12 +84,14 @@ async def update_deployment(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    actual_db_cols = sync_orm_columns(db)
     deployment = db.query(Deployment).filter(Deployment.id == id, Deployment.deleted_at == None).first()
     if not deployment:
         raise HTTPException(404, "Deployment not found")
     
     for key, value in data.dict(exclude_unset=True).items():
-        setattr(deployment, key, value)
+        if key in actual_db_cols:
+            setattr(deployment, key, value)
     
     db.commit()
     db.refresh(deployment)

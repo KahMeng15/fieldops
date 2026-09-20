@@ -27,6 +27,7 @@ export const NewDeploymentModal: React.FC<NewDeploymentModalProps> = ({
   const [status, setStatus] = useState('Planning');
   const [notes, setNotes] = useState('');
   const [customValues, setCustomValues] = useState<Record<string, string>>({});
+  const [otherValues, setOtherValues] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -45,36 +46,37 @@ export const NewDeploymentModal: React.FC<NewDeploymentModalProps> = ({
           const locField = fields.find(f => f.key === 'location');
           const notesField = fields.find(f => f.key === 'notes');
 
-          if (typeField?.default_value) setDeploymentType(typeField.default_value);
-          else if (typeField?.options?.length) setDeploymentType(typeField.options[0]);
+          setDeploymentType(typeField?.default_value ?? '');
+          setInternalGroupName(groupField?.default_value ?? '');
+          setStatus(statusField?.default_value ?? '');
+          setLocation(locField?.default_value ?? '');
+          setNotes(notesField?.default_value ?? '');
 
-          if (groupField?.default_value) setInternalGroupName(groupField.default_value);
-          else if (groupField?.options?.length) setInternalGroupName(groupField.options[0]);
-
-          if (statusField?.default_value) setStatus(statusField.default_value);
-          else if (statusField?.options?.length) setStatus(statusField.options[0]);
-
-          if (locField?.default_value) setLocation(locField.default_value);
-          if (notesField?.default_value) setNotes(notesField.default_value);
-
-          // Initialize custom fields default values
+          // Initialize custom/dynamic fields default values
           const initialCustom: Record<string, string> = {};
-          fields.filter(f => f.key.startsWith('custom_')).forEach(f => {
-            initialCustom[f.key] = f.default_value || (f.options?.length ? f.options[0] : '');
-          });
+          fields
+            .filter(f => !['customer_name', 'location', 'deployment_type', 'internal_group_name', 'pre_poc_status', 'notes'].includes(f.key))
+            .forEach(f => {
+              initialCustom[f.key] = f.default_value ?? '';
+            });
           setCustomValues(initialCustom);
+          setOtherValues({});
         })
         .catch(() => {
           // Fallback if settings endpoint fails
-          setDeploymentType('Deployment');
-          setStatus('Planning');
+          setDeploymentType('');
+          setStatus('');
         });
     } else {
       // Reset form on close
       setCustomerName('');
       setLocation('');
+      setDeploymentType('');
       setInternalGroupName('');
+      setStatus('');
       setNotes('');
+      setCustomValues({});
+      setOtherValues({});
       setError(null);
     }
   }, [isOpen]);
@@ -95,10 +97,6 @@ export const NewDeploymentModal: React.FC<NewDeploymentModalProps> = ({
     return f ? f.required : defaultRequired;
   };
 
-  const customFields = (settings?.fields || []).filter(
-    f => f.key.startsWith('custom_') && f.enabled
-  );
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -116,25 +114,52 @@ export const NewDeploymentModal: React.FC<NewDeploymentModalProps> = ({
     setError(null);
 
     try {
-      // Append any custom fields to notes if present
-      let finalNotes = notes.trim();
-      if (customFields.length > 0) {
-        const customDetails = customFields
-          .map(cf => `${cf.label}: ${customValues[cf.key] || 'N/A'}`)
-          .join('\n');
-        finalNotes = finalNotes ? `${finalNotes}\n\n[Custom Fields]\n${customDetails}` : `[Custom Fields]\n${customDetails}`;
-      }
+      // Resolve write-in values for fields where "Other" was selected
+      const finalDeploymentType = (deploymentType === 'Other' && otherValues['deployment_type']?.trim())
+        ? otherValues['deployment_type'].trim()
+        : deploymentType;
 
-      const payload: Partial<DeploymentData> = {
+      const finalInternalGroup = (internalGroupName === 'Other' && otherValues['internal_group_name']?.trim())
+        ? otherValues['internal_group_name'].trim()
+        : internalGroupName;
+
+      const finalStatus = (status === 'Other' && otherValues['pre_poc_status']?.trim())
+        ? otherValues['pre_poc_status'].trim()
+        : status;
+
+      // Construct payload with all enabled fields saving directly to their DB columns
+      const payload: Record<string, any> = {
         customer_name: customerName.trim(),
         location: isFieldEnabled('location') ? location.trim() : 'N/A',
-        deployment_type: (isFieldEnabled('deployment_type') ? deploymentType : 'Deployment') as any,
-        internal_group_name: isFieldEnabled('internal_group_name') ? (internalGroupName.trim() || undefined) : undefined,
-        pre_poc_status: isFieldEnabled('pre_poc_status') ? status : 'Planning',
-        notes: isFieldEnabled('notes') ? (finalNotes || undefined) : undefined,
       };
 
-      const result = await createDeployment(payload);
+      if (isFieldEnabled('deployment_type')) {
+        payload.deployment_type = finalDeploymentType || null;
+      }
+      if (isFieldEnabled('internal_group_name')) {
+        payload.internal_group_name = finalInternalGroup.trim() || null;
+      }
+      if (isFieldEnabled('pre_poc_status')) {
+        payload.pre_poc_status = finalStatus || null;
+      }
+      if (isFieldEnabled('notes')) {
+        payload.notes = notes.trim() || null;
+      }
+
+      // Add all other custom or non-system fields directly to payload to save in PostgreSQL
+      const otherConfiguredFields = (settings?.fields || []).filter(
+        f => !['customer_name', 'location', 'deployment_type', 'internal_group_name', 'pre_poc_status', 'notes'].includes(f.key) && f.enabled
+      );
+
+      for (const cf of otherConfiguredFields) {
+        const rawVal = customValues[cf.key] ?? '';
+        const resolvedVal = (rawVal === 'Other' && otherValues[cf.key]?.trim())
+          ? otherValues[cf.key].trim()
+          : rawVal;
+        payload[cf.key] = resolvedVal || null;
+      }
+
+      const result = await createDeployment(payload as any);
       onSuccess(result);
       onClose();
     } catch (err: any) {
@@ -186,7 +211,11 @@ export const NewDeploymentModal: React.FC<NewDeploymentModalProps> = ({
           </div>
         );
 
-      case 'deployment_type':
+      case 'deployment_type': {
+        const options = [...(f.options || ['Deployment', 'POC'])];
+        if (f.allow_other && !options.includes('Other')) {
+          options.push('Other');
+        }
         return (
           <div key={f.key}>
             <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
@@ -200,23 +229,41 @@ export const NewDeploymentModal: React.FC<NewDeploymentModalProps> = ({
                 onChange={e => setDeploymentType(e.target.value)}
                 className="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-white"
               >
-                {(f.options || ['Deployment', 'POC']).map(opt => (
+                <option value="">-- Select {f.label} --</option>
+                {options.map(opt => (
                   <option key={opt} value={opt}>
                     {opt}
                   </option>
                 ))}
               </select>
             </div>
+            {f.allow_other && deploymentType === 'Other' && (
+              <div className="mt-2 animate-in fade-in duration-150">
+                <input
+                  type="text"
+                  required={f.required}
+                  value={otherValues['deployment_type'] || ''}
+                  onChange={e => setOtherValues(prev => ({ ...prev, deployment_type: e.target.value }))}
+                  placeholder={f.other_placeholder || `Specify other ${f.label.toLowerCase()}...`}
+                  className="w-full px-3 py-2 text-xs border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-blue-50/40 text-slate-900"
+                />
+              </div>
+            )}
           </div>
         );
+      }
 
-      case 'internal_group_name':
+      case 'internal_group_name': {
+        const options = [...(f.options || [])];
+        if (f.allow_other && !options.includes('Other')) {
+          options.push('Other');
+        }
         return (
           <div key={f.key}>
             <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
               {f.label} {f.required && '*'}
             </label>
-            {f.options && f.options.length > 0 ? (
+            {options.length > 0 ? (
               <div className="relative">
                 <Users className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
                 <select
@@ -225,8 +272,8 @@ export const NewDeploymentModal: React.FC<NewDeploymentModalProps> = ({
                   onChange={e => setInternalGroupName(e.target.value)}
                   className="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-white"
                 >
-                  <option value="">(Select Internal Group)</option>
-                  {f.options.map(opt => (
+                  <option value="">-- Select {f.label} --</option>
+                  {options.map(opt => (
                     <option key={opt} value={opt}>
                       {opt}
                     </option>
@@ -243,10 +290,27 @@ export const NewDeploymentModal: React.FC<NewDeploymentModalProps> = ({
                 className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
               />
             )}
+            {f.allow_other && internalGroupName === 'Other' && (
+              <div className="mt-2 animate-in fade-in duration-150">
+                <input
+                  type="text"
+                  required={f.required}
+                  value={otherValues['internal_group_name'] || ''}
+                  onChange={e => setOtherValues(prev => ({ ...prev, internal_group_name: e.target.value }))}
+                  placeholder={f.other_placeholder || `Specify other ${f.label.toLowerCase()}...`}
+                  className="w-full px-3 py-2 text-xs border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-blue-50/40 text-slate-900"
+                />
+              </div>
+            )}
           </div>
         );
+      }
 
-      case 'pre_poc_status':
+      case 'pre_poc_status': {
+        const options = [...(f.options || ['Planning', 'Pre-POC', 'In Progress', 'Staging', 'Active', 'Completed'])];
+        if (f.allow_other && !options.includes('Other')) {
+          options.push('Other');
+        }
         return (
           <div key={f.key}>
             <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
@@ -258,14 +322,28 @@ export const NewDeploymentModal: React.FC<NewDeploymentModalProps> = ({
               onChange={e => setStatus(e.target.value)}
               className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-white"
             >
-              {(f.options || ['Planning', 'Pre-POC', 'In Progress', 'Staging', 'Active', 'Completed']).map(opt => (
+              <option value="">-- Select {f.label} --</option>
+              {options.map(opt => (
                 <option key={opt} value={opt}>
                   {opt}
                 </option>
               ))}
             </select>
+            {f.allow_other && status === 'Other' && (
+              <div className="mt-2 animate-in fade-in duration-150">
+                <input
+                  type="text"
+                  required={f.required}
+                  value={otherValues['pre_poc_status'] || ''}
+                  onChange={e => setOtherValues(prev => ({ ...prev, pre_poc_status: e.target.value }))}
+                  placeholder={f.other_placeholder || `Specify other ${f.label.toLowerCase()}...`}
+                  className="w-full px-3 py-2 text-xs border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-blue-50/40 text-slate-900"
+                />
+              </div>
+            )}
           </div>
         );
+      }
 
       case 'notes':
         return (
@@ -287,27 +365,44 @@ export const NewDeploymentModal: React.FC<NewDeploymentModalProps> = ({
           </div>
         );
 
-      default:
-        // Custom field
+      default: {
+        const options = [...(f.options || [])];
+        if (f.allow_other && !options.includes('Other')) {
+          options.push('Other');
+        }
         return (
           <div key={f.key}>
             <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
               {f.label} {f.required && '*'}
             </label>
-            {f.type === 'select' && f.options && f.options.length > 0 ? (
-              <select
-                required={f.required}
-                value={customValues[f.key] || ''}
-                onChange={e => setCustomValues(prev => ({ ...prev, [f.key]: e.target.value }))}
-                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
-              >
-                <option value="">Select an option...</option>
-                {f.options.map(opt => (
-                  <option key={opt} value={opt}>
-                    {opt}
-                  </option>
-                ))}
-              </select>
+            {f.type === 'select' && options.length > 0 ? (
+              <>
+                <select
+                  required={f.required}
+                  value={customValues[f.key] || ''}
+                  onChange={e => setCustomValues(prev => ({ ...prev, [f.key]: e.target.value }))}
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                >
+                  <option value="">-- Select {f.label} --</option>
+                  {options.map(opt => (
+                    <option key={opt} value={opt}>
+                      {opt}
+                    </option>
+                  ))}
+                </select>
+                {f.allow_other && customValues[f.key] === 'Other' && (
+                  <div className="mt-2 animate-in fade-in duration-150">
+                    <input
+                      type="text"
+                      required={f.required}
+                      value={otherValues[f.key] || ''}
+                      onChange={e => setOtherValues(prev => ({ ...prev, [f.key]: e.target.value }))}
+                      placeholder={f.other_placeholder || `Specify other ${f.label.toLowerCase()}...`}
+                      className="w-full px-3 py-2 text-xs border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-blue-50/40 text-slate-900"
+                    />
+                  </div>
+                )}
+              </>
             ) : f.type === 'textarea' ? (
               <textarea
                 required={f.required}
@@ -327,6 +422,7 @@ export const NewDeploymentModal: React.FC<NewDeploymentModalProps> = ({
             )}
           </div>
         );
+      }
     }
   };
 

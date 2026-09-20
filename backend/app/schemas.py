@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, model_validator
 from typing import Optional, List, Dict, Any
 from uuid import UUID
 from datetime import datetime
@@ -35,22 +35,33 @@ class DeploymentSchema(BaseModel):
     customer_name: str
     location: str
     internal_group_name: Optional[str] = None
-    deployment_type: str = "Deployment"
+    deployment_type: Optional[str] = None
     pre_poc_status: Optional[str] = None
     poc_status: Optional[str] = None
     post_poc_status: Optional[str] = None
     notes: Optional[str] = None
 
+    class Config:
+        extra = "allow"
+
 class DeploymentResponse(DeploymentSchema):
     id: UUID
-    account_owner_id: Optional[UUID]
-    server_collected_at: Optional[datetime]
+    account_owner_id: Optional[UUID] = None
+    server_collected_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
-    created_by_id: Optional[UUID]
+    created_by_id: Optional[UUID] = None
 
     class Config:
         from_attributes = True
+        extra = "allow"
+
+    @model_validator(mode="before")
+    @classmethod
+    def from_orm_extra(cls, data: Any) -> Any:
+        if hasattr(data, "__dict__"):
+            return {k: v for k, v in data.__dict__.items() if not k.startswith("_")}
+        return data
 
 class CredentialCreate(BaseModel):
     deployment_id: UUID

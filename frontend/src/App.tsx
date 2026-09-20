@@ -1,10 +1,9 @@
-import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import { createBrowserRouter, RouterProvider, Navigate, Outlet } from 'react-router-dom';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import DeploymentsPage from './pages/DeploymentsPage';
 import DeploymentDetailPage from './pages/DeploymentDetailPage';
 import Layout from './components/Layout';
-
 import SettingsPage from './pages/SettingsPage';
 
 const PrivateRoute = () => {
@@ -12,26 +11,29 @@ const PrivateRoute = () => {
   return token ? <Layout><Outlet /></Layout> : <Navigate to="/login" replace />;
 };
 
-function App() {
-  return (
-    <Router>
-      <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        
-        {/* Protected Routes with Persistent Navbar */}
-        <Route element={<PrivateRoute />}>
-          <Route path="/" element={<DashboardPage />} />
-          <Route path="/deployments" element={<DeploymentsPage />} />
-          <Route path="/deployments/:id" element={<DeploymentDetailPage />} />
-          <Route path="/settings/user" element={<SettingsPage type="user" />} />
-          <Route path="/settings/admin" element={<SettingsPage type="admin" />} />
-        </Route>
+const router = createBrowserRouter([
+  {
+    path: '/login',
+    element: <LoginPage />
+  },
+  {
+    element: <PrivateRoute />,
+    children: [
+      { path: '/', element: <DashboardPage /> },
+      { path: '/deployments', element: <DeploymentsPage /> },
+      { path: '/deployments/:id', element: <DeploymentDetailPage /> },
+      { path: '/settings/user', element: <SettingsPage type="user" /> },
+      { path: '/settings/admin', element: <SettingsPage type="admin" /> },
+    ]
+  },
+  {
+    path: '*',
+    element: <Navigate to="/" replace />
+  }
+]);
 
-        {/* Catch-all redirect */}
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </Router>
-  );
+function App() {
+  return <RouterProvider router={router} />;
 }
 
 export default App;
