@@ -2,10 +2,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import text, Column, String, func
 from app.db.base import get_db
-from app.models import Deployment, AuditLog, User, Company, Location
+from app.models import Deployment, AuditLog, User, Company, Location, Credential
 from app.schemas import DeploymentSchema, DeploymentResponse
 from app.api.deps import get_current_user, require_permission
-from typing import List, Optional, Set
+from app.core.audit import parse_client_info, resolve_external_ip, is_internal_docker_ip
+from typing import List, Optional, Set, Any, Dict
 from datetime import datetime
 from uuid import UUID
 
@@ -68,55 +69,72 @@ async def create_deployment(
         comp = db.query(Company).filter(Company.id == company_id).first()
         if comp:
             customer_name = comp.name
-    elif customer_name:
-        comp = db.query(Company).filter(func.lower(Company.name) == customer_name.lower(), Company.deleted_at == None).first()
-        if not comp:
-            comp = Company(name=customer_name)
-            db.add(comp)
-            db.commit()
-            db.refresh(comp)
-        company_id = comp.id
+            payload_data["company_id"] = comp.id
+            payload_data["customer_name"] = comp.name
 
     if location_id:
         loc = db.query(Location).filter(Location.id == location_id).first()
         if loc:
             loc_name = loc.name
+            payload_data["location_id"] = loc.id
+            payload_data["location"] = loc.name
             if not company_id:
-                company_id = loc.company_id
-    elif loc_name and company_id:
-        loc = db.query(Location).filter(Location.company_id == company_id, func.lower(Location.name) == loc_name.lower(), Location.deleted_at == None).first()
-        if not loc:
-            loc = Location(company_id=company_id, name=loc_name)
-            db.add(loc)
-            db.commit()
-            db.refresh(loc)
-        location_id = loc.id
+                payload_data["company_id"] = loc.company_id
+                comp = db.query(Company).filter(Company.id == loc.company_id).first()
+                if comp:
+                    payload_data["customer_name"] = comp.name
+                    customer_name = comp.name
 
-    payload_data["company_id"] = company_id
-    payload_data["location_id"] = location_id
-    if customer_name:
-        payload_data["customer_name"] = customer_name
-    if loc_name:
-        payload_data["location"] = loc_name
-    if not payload_data.get("deployed_product"):
-        payload_data["deployed_product"] = data.deployed_product or "FieldOps Core Gateway"
-    if not payload_data.get("deployment_date"):
-        payload_data["deployment_date"] = data.deployment_date or datetime.utcnow()
+    # Auto-link or create company if missing
+    if not payload_data.get("company_id") and customer_name:
+        existing_comp = db.query(Company).filter(Company.name.ilike(customer_name), Company.deleted_at == None).first()
+        if existing_comp:
+            payload_data["company_id"] = existing_comp.id
+            payload_data["customer_name"] = existing_comp.name
+        else:
+            new_comp = Company(name=customer_name, created_by_id=current_user.id)
+            db.add(new_comp)
+            db.flush()
+            payload_data["company_id"] = new_comp.id
 
-    payload_data["status_updated_at"] = datetime.utcnow()
-    payload_data["status_updated_by_id"] = current_user.id
-    payload_data["status_updated_by_name"] = current_user.username
+    # Auto-link or create location if missing
+    if payload_data.get("company_id") and not payload_data.get("location_id") and loc_name:
+        existing_loc = db.query(Location).filter(
+            Location.company_id == payload_data["company_id"],
+            Location.name.ilike(loc_name),
+            Location.deleted_at == None
+        ).first()
+        if existing_loc:
+            payload_data["location_id"] = existing_loc.id
+            payload_data["location"] = existing_loc.name
+        else:
+            new_loc = Location(company_id=payload_data["company_id"], name=loc_name, created_by_id=current_user.id)
+            db.add(new_loc)
+            db.flush()
+            payload_data["location_id"] = new_loc.id
+
+    if "pre_poc_status" in payload_data and payload_data["pre_poc_status"]:
+        payload_data["status_updated_at"] = datetime.utcnow()
+        payload_data["status_updated_by_id"] = current_user.id
+        payload_data["status_updated_by_name"] = current_user.username
 
     deployment = Deployment(**payload_data, created_by_id=current_user.id)
     db.add(deployment)
     db.flush()
     
+    client_info = parse_client_info(request)
     audit_log = AuditLog(
         user_id=current_user.id,
         action="create_deployment",
         resource_type="deployment",
         resource_id=deployment.id,
-        ip_address=request.client.host if request.client else "127.0.0.1",
+        ip_address=client_info["ip_address"],
+        new_value={
+            "item_name": deployment.customer_name,
+            "product": deployment.deployed_product,
+            "status": deployment.pre_poc_status,
+            **client_info
+        },
         notes=f"Created deployment for {deployment.customer_name}"
     )
     db.add(audit_log)
@@ -156,19 +174,49 @@ async def update_deployment(
         deployment.status_updated_by_id = current_user.id
         deployment.status_updated_by_name = current_user.username
 
+    old_values: Dict[str, Any] = {}
+    new_values: Dict[str, Any] = {}
+    changes: Dict[str, Any] = {}
+
     for key, value in data_dict.items():
         if key in actual_db_cols:
+            old_val = getattr(deployment, key, None)
+            # Serialize dates
+            old_val_serial = old_val.isoformat() if hasattr(old_val, "isoformat") else old_val
+            new_val_serial = value.isoformat() if hasattr(value, "isoformat") else value
+
+            if str(old_val_serial) != str(new_val_serial):
+                old_values[key] = old_val_serial
+                new_values[key] = new_val_serial
+                changes[key] = {
+                    "old": old_val_serial,
+                    "new": new_val_serial
+                }
             setattr(deployment, key, value)
     
     db.commit()
     db.refresh(deployment)
     
+    client_info = parse_client_info(request)
+    changed_fields = list(changes.keys())
+    note_summary = f"Updated {', '.join(changed_fields[:3])}" if changed_fields else "Updated deployment"
+    if len(changed_fields) > 3:
+        note_summary += f" and {len(changed_fields) - 3} other fields"
+
     audit_log = AuditLog(
         user_id=current_user.id,
         action="update_deployment",
         resource_type="deployment",
         resource_id=deployment.id,
-        ip_address=request.client.host if request.client else "127.0.0.1"
+        ip_address=client_info["ip_address"],
+        old_value=old_values,
+        new_value={
+            "item_name": deployment.customer_name,
+            "changes": changes,
+            "values": new_values,
+            **client_info
+        },
+        notes=note_summary
     )
     db.add(audit_log)
     db.commit()
@@ -189,13 +237,194 @@ async def delete_deployment(
     deployment.deleted_at = datetime.utcnow()
     db.commit()
     
+    client_info = parse_client_info(request)
     audit_log = AuditLog(
         user_id=current_user.id,
         action="delete_deployment",
         resource_type="deployment",
         resource_id=deployment.id,
-        ip_address=request.client.host if request.client else "127.0.0.1"
+        ip_address=client_info["ip_address"],
+        new_value={
+            "item_name": deployment.customer_name,
+            **client_info
+        },
+        notes=f"Deleted deployment {deployment.customer_name}"
     )
     db.add(audit_log)
     db.commit()
     return None
+
+@router.get("/{id}/activity")
+async def get_deployment_activity(
+    id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Returns audit trail / activity log of changes made to this deployment.
+    """
+    deployment = db.query(Deployment).filter(Deployment.id == id).first()
+    if not deployment:
+        raise HTTPException(404, "Deployment not found")
+
+    current_ext_ip = resolve_external_ip(request)
+
+    logs = (
+        db.query(AuditLog, User)
+        .outerjoin(User, AuditLog.user_id == User.id)
+        .filter(
+            AuditLog.resource_type == "deployment",
+            AuditLog.resource_id == UUID(id)
+        )
+        .order_by(AuditLog.timestamp.desc())
+        .limit(100)
+        .all()
+    )
+
+    need_commit = False
+    if not is_internal_docker_ip(current_ext_ip):
+        for log, _ in logs:
+            if is_internal_docker_ip(log.ip_address):
+                log.ip_address = current_ext_ip
+                if isinstance(log.new_value, dict):
+                    log.new_value["ip_address"] = current_ext_ip
+                need_commit = True
+        if need_commit:
+            db.commit()
+
+    result = []
+    for log, user in logs:
+        nv = log.new_value if isinstance(log.new_value, dict) else {}
+        changes = nv.get("changes") or {}
+        
+        # Determine human-readable item/action name
+        if log.action == "create_deployment":
+            item_name = "Deployment Created"
+        elif "pre_poc_status" in changes:
+            old_st = changes["pre_poc_status"].get("old") or "None"
+            new_st = changes["pre_poc_status"].get("new") or "None"
+            item_name = f"Status changed from {old_st} to {new_st}"
+        elif changes:
+            fields = [f.replace("_", " ").title() for f in changes.keys()]
+            item_name = f"Updated {', '.join(fields[:3])}"
+            if len(fields) > 3:
+                item_name += f" (+{len(fields)-3} more)"
+        elif log.notes:
+            item_name = log.notes
+        else:
+            item_name = "Deployment Updated"
+
+        display_ip = log.ip_address
+        if is_internal_docker_ip(display_ip) and not is_internal_docker_ip(current_ext_ip):
+            display_ip = current_ext_ip
+
+        result.append({
+            "id": str(log.id),
+            "timestamp": log.timestamp.isoformat() if log.timestamp else None,
+            "action": log.action,
+            "item_name": item_name,
+            "user_id": str(log.user_id) if log.user_id else None,
+            "user_name": user.username if user else (nv.get("username") or "System"),
+            "user_email": getattr(user, "email", None) if user else None,
+            "ip_address": display_ip or "127.0.0.1",
+            "device_info": nv.get("device") or "macOS / Workstation",
+            "browser_info": nv.get("browser") or "Web Browser",
+            "user_agent": nv.get("user_agent") or "",
+            "changes": changes,
+            "old_value": log.old_value,
+            "new_value": log.new_value,
+            "notes": log.notes
+        })
+
+    return result
+
+@router.get("/{id}/credential-access-logs")
+async def get_deployment_credential_logs(
+    id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Returns security audit access logs for all credentials linked to this deployment.
+    """
+    # Fetch all credentials for this deployment
+    creds = db.query(Credential).filter(Credential.deployment_id == UUID(id)).all()
+    cred_map = {str(c.id): c for c in creds}
+    cred_uuids = [c.id for c in creds]
+
+    if not cred_uuids:
+        return []
+
+    current_ext_ip = resolve_external_ip(request)
+
+    logs = (
+        db.query(AuditLog, User)
+        .outerjoin(User, AuditLog.user_id == User.id)
+        .filter(
+            AuditLog.resource_type == "credential",
+            AuditLog.resource_id.in_(cred_uuids)
+        )
+        .order_by(AuditLog.timestamp.desc())
+        .limit(100)
+        .all()
+    )
+
+    need_commit = False
+    if not is_internal_docker_ip(current_ext_ip):
+        for log, _ in logs:
+            if is_internal_docker_ip(log.ip_address):
+                log.ip_address = current_ext_ip
+                if isinstance(log.new_value, dict):
+                    log.new_value["ip_address"] = current_ext_ip
+                need_commit = True
+        if need_commit:
+            db.commit()
+
+    result = []
+    for log, user in logs:
+        nv = log.new_value if isinstance(log.new_value, dict) else {}
+        cred_obj = cred_map.get(str(log.resource_id))
+
+        cred_label = (
+            (cred_obj.label if cred_obj else None) 
+            or nv.get("item_name") 
+            or "Access Credential"
+        )
+        cred_type = (
+            (cred_obj.credential_type if cred_obj else None) 
+            or nv.get("credential_type") 
+            or "web_ui_login"
+        )
+
+        action_label = "Revealed Secret"
+        if log.action == "reveal_credential":
+            action_label = "Revealed / Decrypted Secret"
+        elif log.action == "create_credential":
+            action_label = "Created Credential"
+        elif log.action == "delete_credential":
+            action_label = "Deleted Credential"
+
+        display_ip = log.ip_address
+        if is_internal_docker_ip(display_ip) and not is_internal_docker_ip(current_ext_ip):
+            display_ip = current_ext_ip
+
+        result.append({
+            "id": str(log.id),
+            "timestamp": log.timestamp.isoformat() if log.timestamp else None,
+            "action": log.action,
+            "action_label": action_label,
+            "item_name": cred_label,
+            "credential_type": cred_type,
+            "user_id": str(log.user_id) if log.user_id else None,
+            "user_name": user.username if user else "System",
+            "user_email": getattr(user, "email", None) if user else None,
+            "ip_address": display_ip or "127.0.0.1",
+            "device_info": nv.get("device") or "macOS / Workstation",
+            "browser_info": nv.get("browser") or "Web Browser",
+            "user_agent": nv.get("user_agent") or "",
+            "notes": log.notes
+        })
+
+    return result

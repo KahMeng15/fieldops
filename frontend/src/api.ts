@@ -1,13 +1,22 @@
 import axios from 'axios';
+import { getExternalIpSync, fetchExternalIp } from './utils/clientIp';
 
 const api = axios.create({
   baseURL: '/api',
 });
 
-api.interceptors.request.use(config => {
+api.interceptors.request.use(async config => {
   const token = localStorage.getItem('access_token');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
+  }
+  const extIp = getExternalIpSync() || (await Promise.race([
+    fetchExternalIp(),
+    new Promise<string>(r => setTimeout(() => r(''), 150))
+  ]));
+  if (extIp) {
+    config.headers['X-Client-External-IP'] = extIp;
+    config.headers['X-Real-IP'] = extIp;
   }
   return config;
 });
@@ -295,6 +304,55 @@ export const createCredential = async (credential: {
 
 export const revealCredential = async (credId: string) => {
   const { data } = await api.post(`/credentials/${credId}/reveal`);
+  return data;
+};
+
+export const deleteCredential = async (credId: string) => {
+  await api.delete(`/credentials/${credId}`);
+};
+
+export interface ActivityLogItem {
+  id: string;
+  timestamp: string | null;
+  action: string;
+  item_name: string;
+  user_id: string | null;
+  user_name: string;
+  user_email: string | null;
+  ip_address: string;
+  device_info: string;
+  browser_info: string;
+  user_agent: string;
+  changes?: Record<string, { old: any; new: any }>;
+  old_value?: any;
+  new_value?: any;
+  notes?: string | null;
+}
+
+export interface CredentialAccessLogItem {
+  id: string;
+  timestamp: string | null;
+  action: string;
+  action_label: string;
+  item_name: string;
+  credential_type: string;
+  user_id: string | null;
+  user_name: string;
+  user_email: string | null;
+  ip_address: string;
+  device_info: string;
+  browser_info: string;
+  user_agent: string;
+  notes?: string | null;
+}
+
+export const getDeploymentActivity = async (id: string): Promise<ActivityLogItem[]> => {
+  const { data } = await api.get(`/deployments/${id}/activity`);
+  return data;
+};
+
+export const getDeploymentCredentialLogs = async (id: string): Promise<CredentialAccessLogItem[]> => {
+  const { data } = await api.get(`/deployments/${id}/credential-access-logs`);
   return data;
 };
 

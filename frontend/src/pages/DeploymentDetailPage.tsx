@@ -24,12 +24,15 @@ import {
   Clock,
   Wrench,
   Users,
-  Server
+  Server,
+  History,
+  KeyRound
 } from 'lucide-react';
 import { 
   getDeployment, 
   getCredentials, 
   revealCredential, 
+  deleteCredential,
   updateDeployment, 
   deleteDeployment, 
   getDeploymentFieldSettings, 
@@ -38,6 +41,8 @@ import {
 } from '../api';
 import NewCredentialModal from '../components/NewCredentialModal';
 import EditDeploymentModal from '../components/EditDeploymentModal';
+import DeploymentActivityModal from '../components/DeploymentActivityModal';
+import CredentialAccessLogsModal from '../components/CredentialAccessLogsModal';
 
 export const DeploymentDetailPage = () => {
   const { id } = useParams<{ id: string }>();
@@ -52,6 +57,8 @@ export const DeploymentDetailPage = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isCredModalOpen, setIsCredModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isActivityModalOpen, setIsActivityModalOpen] = useState(false);
+  const [isCredLogsModalOpen, setIsCredLogsModalOpen] = useState(false);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [statusUpdating, setStatusUpdating] = useState(false);
   const [statusOptions, setStatusOptions] = useState<string[]>([
@@ -170,6 +177,21 @@ export const DeploymentDetailPage = () => {
       alert('Failed to decrypt credential. Unauthorized or audit log failure.');
     } finally {
       setIsRevealing(null);
+    }
+  };
+
+  const handleDeleteCredential = async (credId: string) => {
+    if (!window.confirm('Are you sure you want to permanently delete this credential? This action cannot be undone.')) {
+      return;
+    }
+    try {
+      await deleteCredential(credId);
+      if (id) {
+        const creds = await getCredentials(id);
+        setCredentials(creds || []);
+      }
+    } catch (err: any) {
+      alert(err?.response?.data?.detail || 'Failed to delete credential');
     }
   };
 
@@ -304,6 +326,28 @@ export const DeploymentDetailPage = () => {
                     >
                       <Pencil className="w-3.5 h-3.5 text-slate-500" />
                       <span>Edit Deployment</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOpenMenuId(null);
+                        setIsActivityModalOpen(true);
+                      }}
+                      className="w-full text-left px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 flex items-center space-x-2 cursor-pointer border-t border-slate-100"
+                    >
+                      <History className="w-3.5 h-3.5 text-blue-500" />
+                      <span>View Activity Log</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOpenMenuId(null);
+                        setIsCredLogsModalOpen(true);
+                      }}
+                      className="w-full text-left px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 flex items-center space-x-2 cursor-pointer"
+                    >
+                      <KeyRound className="w-3.5 h-3.5 text-emerald-500" />
+                      <span>Credential Access Logs</span>
                     </button>
                     <button
                       type="button"
@@ -537,27 +581,37 @@ export const DeploymentDetailPage = () => {
                           </div>
                         </div>
 
-                        <button
-                          onClick={() => cred.id && handleToggleReveal(cred.id)}
-                          disabled={isRevealing === cred.id}
-                          className={`inline-flex items-center space-x-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-all cursor-pointer ${
-                            isRevealed
-                              ? 'bg-slate-800 text-white border-slate-700 hover:bg-slate-700'
-                              : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
-                          }`}
-                        >
-                          {isRevealed ? (
-                            <>
-                              <EyeOff className="w-3.5 h-3.5" />
-                              <span>Hide Secret</span>
-                            </>
-                          ) : (
-                            <>
-                              <Eye className="w-3.5 h-3.5" />
-                              <span>{isRevealing === cred.id ? 'Decrypting...' : 'Reveal Secret'}</span>
-                            </>
-                          )}
-                        </button>
+                        <div className="flex items-center space-x-2 shrink-0">
+                          <button
+                            onClick={() => cred.id && handleToggleReveal(cred.id)}
+                            disabled={isRevealing === cred.id}
+                            className={`inline-flex items-center space-x-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-all cursor-pointer ${
+                              isRevealed
+                                ? 'bg-slate-800 text-white border-slate-700 hover:bg-slate-700'
+                                : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+                            }`}
+                          >
+                            {isRevealed ? (
+                              <>
+                                <EyeOff className="w-3.5 h-3.5" />
+                                <span>Hide Secret</span>
+                              </>
+                            ) : (
+                              <>
+                                <Eye className="w-3.5 h-3.5" />
+                                <span>{isRevealing === cred.id ? 'Decrypting...' : 'Reveal Secret'}</span>
+                              </>
+                            )}
+                          </button>
+
+                          <button
+                            onClick={() => cred.id && handleDeleteCredential(cred.id)}
+                            title="Delete credential"
+                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer border border-transparent hover:border-red-200"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
 
                       {/* Masked vs Revealed Content */}
@@ -648,6 +702,26 @@ export const DeploymentDetailPage = () => {
           onSuccess={(updated) => {
             setDeployment(prev => prev ? { ...prev, ...updated } : updated);
           }}
+        />
+      )}
+
+      {/* Deployment Activity Log Modal */}
+      {id && deployment && (
+        <DeploymentActivityModal
+          isOpen={isActivityModalOpen}
+          onClose={() => setIsActivityModalOpen(false)}
+          deploymentId={id}
+          customerName={deployment.customer_name}
+        />
+      )}
+
+      {/* Credential Access Logs Modal */}
+      {id && deployment && (
+        <CredentialAccessLogsModal
+          isOpen={isCredLogsModalOpen}
+          onClose={() => setIsCredLogsModalOpen(false)}
+          deploymentId={id}
+          customerName={deployment.customer_name}
         />
       )}
     </div>
