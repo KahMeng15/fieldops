@@ -12,7 +12,8 @@ import {
   Package, 
   Calendar, 
   Plus,
-  Wrench
+  Wrench,
+  FolderOpen
 } from 'lucide-react';
 import { 
   createDeployment, 
@@ -70,6 +71,7 @@ export const NewDeploymentModal: React.FC<NewDeploymentModalProps> = ({
   const [leadEngineer, setLeadEngineer] = useState('');
   const [assistingEngineers, setAssistingEngineers] = useState('');
   const [status, setStatus] = useState('Planning');
+  const [deploymentFolder, setDeploymentFolder] = useState('');
   const [notes, setNotes] = useState('');
   const [customValues, setCustomValues] = useState<Record<string, string>>({});
   const [otherValues, setOtherValues] = useState<Record<string, string>>({});
@@ -165,6 +167,7 @@ export const NewDeploymentModal: React.FC<NewDeploymentModalProps> = ({
       setInternalGroupName('');
       setAccountOwner('');
       setStatus('');
+      setDeploymentFolder('');
       setNotes('');
       setCustomValues({});
       setOtherValues({});
@@ -279,6 +282,7 @@ export const NewDeploymentModal: React.FC<NewDeploymentModalProps> = ({
       if (isFieldEnabled('notes')) {
         payload.notes = notes.trim() || null;
       }
+      payload.deployment_folder = deploymentFolder.trim() || null;
 
       // Add all other custom or non-system fields directly to payload to save in PostgreSQL
       const otherConfiguredFields = (settings?.fields || []).filter(
@@ -660,6 +664,26 @@ export const NewDeploymentModal: React.FC<NewDeploymentModalProps> = ({
                     </div>
                   </div>
                 )}
+              </div>
+
+              {/* Deployment Folder (OneDrive Link) */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                  Deployment Folder (OneDrive Link)
+                </label>
+                <div className="relative">
+                  <FolderOpen className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+                  <input
+                    type="url"
+                    value={deploymentFolder}
+                    onChange={e => setDeploymentFolder(e.target.value)}
+                    placeholder="https://onedrive.live.com/... or SharePoint folder link"
+                    className="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Link to OneDrive / SharePoint folder for configuration files, UAT sign-offs, and backups.
+                </p>
               </div>
 
               {/* Notes */}

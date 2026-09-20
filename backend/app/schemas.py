@@ -118,6 +118,7 @@ class DeploymentSchema(BaseModel):
     status_updated_at: Optional[datetime] = None
     status_updated_by_id: Optional[UUID] = None
     status_updated_by_name: Optional[str] = None
+    deployment_folder: Optional[str] = None
     notes: Optional[str] = None
 
     class Config:
@@ -164,6 +165,11 @@ class CredentialCreate(BaseModel):
     credential_type: str
     label: str
     payload: Dict[str, Any]
+
+class CredentialUpdate(BaseModel):
+    label: Optional[str] = None
+    credential_type: Optional[str] = None
+    payload: Optional[Dict[str, Any]] = None
 
 class CredentialResponse(BaseModel):
     id: UUID

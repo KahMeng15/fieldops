@@ -10,7 +10,8 @@ import {
   Calendar, 
   Layers, 
   Activity, 
-  CheckCircle2
+  CheckCircle2,
+  FolderOpen
 } from 'lucide-react';
 import { 
   updateDeployment, 
@@ -41,6 +42,7 @@ export const EditDeploymentModal: React.FC<EditDeploymentModalProps> = ({
   const [assistingEngineers, setAssistingEngineers] = useState('');
   const [internalGroupName, setInternalGroupName] = useState('');
   const [deploymentDate, setDeploymentDate] = useState('');
+  const [deploymentFolder, setDeploymentFolder] = useState('');
   const [notes, setNotes] = useState('');
 
   const [typeOptions, setTypeOptions] = useState<string[]>(['Deployment', 'POC']);
@@ -90,6 +92,7 @@ export const EditDeploymentModal: React.FC<EditDeploymentModalProps> = ({
         setDeploymentDate('');
       }
 
+      setDeploymentFolder(deployment.deployment_folder || '');
       setNotes(deployment.notes || '');
       setError(null);
     }
@@ -123,6 +126,7 @@ export const EditDeploymentModal: React.FC<EditDeploymentModalProps> = ({
         assisting_engineers: assistingEngineers.trim() || undefined,
         internal_group_name: internalGroupName.trim() || undefined,
         deployment_date: deploymentDate ? new Date(deploymentDate).toISOString() : undefined,
+        deployment_folder: deploymentFolder.trim() || undefined,
         notes: notes.trim() || undefined,
       };
 
@@ -341,6 +345,26 @@ export const EditDeploymentModal: React.FC<EditDeploymentModalProps> = ({
                 />
               </div>
             </div>
+          </div>
+
+          {/* Deployment Folder (OneDrive Link) */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+              Deployment Folder (OneDrive Link)
+            </label>
+            <div className="relative">
+              <FolderOpen className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+              <input
+                type="url"
+                value={deploymentFolder}
+                onChange={e => setDeploymentFolder(e.target.value)}
+                placeholder="https://onedrive.live.com/... or SharePoint link"
+                className="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            <p className="text-[11px] text-slate-400 mt-1">
+              Link to OneDrive / SharePoint folder for configuration files, UAT sign-offs, and backups.
+            </p>
           </div>
 
           {/* Notes */}

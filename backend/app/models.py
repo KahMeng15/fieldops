@@ -113,6 +113,7 @@ class Deployment(Base):
     status_updated_by_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     status_updated_by_name = Column(String, nullable=True)
     server_collected_at = Column(DateTime, nullable=True)
+    deployment_folder = Column(String, nullable=True)
     notes = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

@@ -241,6 +241,7 @@ export interface DeploymentData {
   status_updated_at?: string;
   status_updated_by_id?: string;
   status_updated_by_name?: string;
+  deployment_folder?: string;
   notes?: string;
   created_at?: string;
   updated_at?: string;
@@ -304,6 +305,18 @@ export const createCredential = async (credential: {
 
 export const revealCredential = async (credId: string) => {
   const { data } = await api.post(`/credentials/${credId}/reveal`);
+  return data;
+};
+
+export const updateCredential = async (
+  credId: string,
+  credential: {
+    label?: string;
+    credential_type?: string;
+    payload: Record<string, any>;
+  }
+) => {
+  const { data } = await api.put(`/credentials/${credId}`, credential);
   return data;
 };
 

@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime
 from app.db.base import get_db
 from app.models import Credential, AuditLog, User
-from app.schemas import CredentialCreate, CredentialResponse
+from app.schemas import CredentialCreate, CredentialUpdate, CredentialResponse
 from app.api.deps import get_current_user, require_permission
 from app.core.encryption import encrypt_credential, decrypt_credential, get_master_key
 from app.core.audit import parse_client_info
@@ -116,6 +116,55 @@ async def reveal_credential(
     db.commit()
     
     return {"credential": plaintext}
+
+@router.put("/{cred_id}", response_model=CredentialResponse)
+@router.patch("/{cred_id}", response_model=CredentialResponse)
+async def update_credential(
+    cred_id: UUID,
+    request: Request,
+    data: CredentialUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(["edit_credential", "create_credential"]))
+):
+    cred = db.query(Credential).filter(Credential.id == cred_id, Credential.deleted_at == None).first()
+    if not cred:
+        raise HTTPException(404, "Credential not found")
+    
+    if data.label is not None:
+        cred.label = data.label
+    if data.credential_type is not None:
+        cred.credential_type = data.credential_type
+    if data.payload is not None:
+        cred.encrypted_payload = encrypt_credential(data.payload, MASTER_KEY)
+    
+    db.commit()
+    db.refresh(cred)
+    
+    client_info = parse_client_info(request)
+    audit_log = AuditLog(
+        user_id=current_user.id,
+        action="edit_credential",
+        resource_type="credential",
+        resource_id=cred_id,
+        ip_address=client_info["ip_address"],
+        new_value={
+            "item_name": cred.label,
+            "credential_type": cred.credential_type,
+            "deployment_id": str(cred.deployment_id),
+            **client_info
+        },
+        notes=f"Updated and re-encrypted {cred.credential_type} credential '{cred.label}'"
+    )
+    db.add(audit_log)
+    db.commit()
+    
+    return CredentialResponse(
+        id=cred.id,
+        deployment_id=cred.deployment_id,
+        credential_type=cred.credential_type,
+        label=cred.label,
+        encrypted_payload="********"
+    )
 
 @router.delete("/{cred_id}", status_code=204)
 async def delete_credential(
