@@ -30,7 +30,8 @@ import {
   KeyRound,
   FolderOpen,
   MessageSquare,
-  AlertTriangle
+  AlertTriangle,
+  Loader2
 } from 'lucide-react';
 import { 
   getDeployment, 
@@ -93,6 +94,12 @@ export const DeploymentDetailPage = () => {
     | { type: 'VIEW_HISTORY' }
     | null
   >(null);
+
+  const [fieldSettings, setFieldSettings] = useState<any[]>([]);
+  const [inlineEditingField, setInlineEditingField] = useState<string | null>(null);
+  const [inlineEditingValue, setInlineEditingValue] = useState<string>('');
+  const [isSavingInline, setIsSavingInline] = useState(false);
+  const [inlineError, setInlineError] = useState<string | null>(null);
 
   const currentActiveRemark = phaseRemarks.find(r => !r.is_archived) || null;
   const originalRemarkText = currentActiveRemark?.remark || '';
@@ -228,10 +235,102 @@ export const DeploymentDetailPage = () => {
   useEffect(() => {
     fetchDetails();
     getDeploymentFieldSettings().then((settings: any) => {
-      const sf = settings.fields?.find((f: any) => f.key === 'pre_poc_status');
-      if (sf?.options?.length) setStatusOptions(sf.options);
+      if (settings?.fields) {
+        setFieldSettings(settings.fields);
+        const sf = settings.fields.find((f: any) => f.key === 'pre_poc_status');
+        if (sf?.options?.length) setStatusOptions(sf.options);
+      }
     }).catch(() => {});
   }, [id]);
+
+  const getFieldOptions = (key: string, fallback: string[]) => {
+    const f = fieldSettings.find((field: any) => field.key === key);
+    return (f?.options && f.options.length > 0) ? f.options : fallback;
+  };
+
+  const handleStartInlineEdit = (fieldKey: string, initialValue: any) => {
+    setInlineEditingField(fieldKey);
+    let val = '';
+    if (fieldKey === 'deployment_date') {
+      if (initialValue) {
+        try {
+          const d = new Date(initialValue);
+          val = !isNaN(d.getTime()) ? d.toISOString().split('T')[0] : '';
+        } catch {
+          val = '';
+        }
+      }
+    } else {
+      val = initialValue !== null && initialValue !== undefined ? String(initialValue) : '';
+    }
+    setInlineEditingValue(val);
+    setInlineError(null);
+  };
+
+  const handleCancelInlineEdit = () => {
+    setInlineEditingField(null);
+    setInlineEditingValue('');
+    setInlineError(null);
+  };
+
+  const handleSaveInlineEdit = async (fieldKey: string) => {
+    if (!id || !deployment) return;
+    setInlineError(null);
+
+    const trimmed = inlineEditingValue.trim();
+    if ((fieldKey === 'customer_name' || fieldKey === 'location') && !trimmed) {
+      setInlineError('This field cannot be empty.');
+      return;
+    }
+
+    try {
+      setIsSavingInline(true);
+      let payloadValue: any = trimmed;
+      if (fieldKey === 'deployment_date') {
+        payloadValue = trimmed ? new Date(trimmed).toISOString() : null;
+      } else if (!trimmed) {
+        payloadValue = null;
+      }
+
+      const updated = await updateDeployment(id, { [fieldKey]: payloadValue });
+      setDeployment((prev: any) => prev ? { ...prev, ...updated } : updated);
+      setInlineEditingField(null);
+      setInlineEditingValue('');
+    } catch (err: any) {
+      setInlineError(err?.response?.data?.detail || 'Failed to save change.');
+    } finally {
+      setIsSavingInline(false);
+    }
+  };
+
+  const renderInlineEditControls = (fieldKey: string) => (
+    <div className="flex items-center gap-1 shrink-0 ml-2">
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          handleSaveInlineEdit(fieldKey);
+        }}
+        disabled={isSavingInline}
+        className="p-1 text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors cursor-pointer disabled:opacity-50"
+        title="Save"
+      >
+        {isSavingInline ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+      </button>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          handleCancelInlineEdit();
+        }}
+        disabled={isSavingInline}
+        className="p-1 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-md transition-colors cursor-pointer"
+        title="Cancel"
+      >
+        <X className="w-3.5 h-3.5" />
+      </button>
+    </div>
+  );
 
   const executeStatusChange = async (newStatus: string) => {
     if (!id || !deployment) return;
@@ -477,9 +576,38 @@ export const DeploymentDetailPage = () => {
             {/* Card Header */}
             <div className="p-5 border-b border-slate-100 flex items-start justify-between gap-3">
               <div className="space-y-1 min-w-0 flex-1">
-                <h1 className="text-xl sm:text-2xl font-bold text-slate-900 truncate" title={deployment.customer_name}>
-                  {deployment.customer_name}
-                </h1>
+                {inlineEditingField === 'customer_name' ? (
+                  <div className="space-y-1 py-1">
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="text"
+                        autoFocus
+                        value={inlineEditingValue}
+                        onChange={(e) => setInlineEditingValue(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleSaveInlineEdit('customer_name');
+                          if (e.key === 'Escape') handleCancelInlineEdit();
+                        }}
+                        disabled={isSavingInline}
+                        className="w-full text-base font-bold text-slate-900 border border-blue-500 rounded-lg px-2.5 py-1 focus:ring-2 focus:ring-blue-500/20 focus:outline-none bg-white"
+                        placeholder="Customer name..."
+                      />
+                      {renderInlineEditControls('customer_name')}
+                    </div>
+                    {inlineError && <p className="text-xs text-red-600 font-medium">{inlineError}</p>}
+                  </div>
+                ) : (
+                  <div
+                    onClick={() => handleStartInlineEdit('customer_name', deployment.customer_name)}
+                    className="group flex items-center justify-between gap-2 p-1.5 -m-1.5 rounded-lg hover:bg-slate-50 border border-transparent hover:border-slate-200/80 cursor-pointer transition-all"
+                    title="Click to edit customer name"
+                  >
+                    <h1 className="text-xl sm:text-2xl font-bold text-slate-900 truncate" title={deployment.customer_name}>
+                      {deployment.customer_name}
+                    </h1>
+                    <Pencil className="w-3.5 h-3.5 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                  </div>
+                )}
                 <p className="text-xs text-slate-500">
                   Deployment Specifications
                 </p>
@@ -493,7 +621,7 @@ export const DeploymentDetailPage = () => {
                     e.stopPropagation();
                     setOpenMenuId(prev => prev === 'deployment' ? null : 'deployment');
                   }}
-                  className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer border border-slate-200"
+                  className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer border-0 outline-none focus:outline-none focus:ring-0"
                   title="Deployment options"
                 >
                   <MoreVertical className="w-4 h-4" />
@@ -572,9 +700,55 @@ export const DeploymentDetailPage = () => {
                   <Package className="w-3.5 h-3.5 text-slate-400" />
                   <span>Deployed Product</span>
                 </div>
-                <div className="text-sm font-semibold text-slate-900">
-                  {deployment.deployed_product || 'FieldOps Core Gateway'}
-                </div>
+                {inlineEditingField === 'deployed_product' ? (
+                  <div>
+                    <div className="flex items-center pt-0.5">
+                      <select
+                        autoFocus
+                        value={inlineEditingValue}
+                        onChange={(e) => setInlineEditingValue(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleSaveInlineEdit('deployed_product');
+                          if (e.key === 'Escape') handleCancelInlineEdit();
+                        }}
+                        disabled={isSavingInline}
+                        className="w-full text-sm font-semibold text-slate-900 border border-blue-500 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                      >
+                        {getFieldOptions('deployed_product', [
+                          'FieldOps Core Gateway',
+                          'Edge Compute Appliance X1',
+                          'Secure Access Service Edge (SASE)',
+                          'AI Inference Node Enterprise',
+                          'Zero Trust Network Connector'
+                        ]).map((opt: string) => (
+                          <option key={opt} value={opt}>{opt}</option>
+                        ))}
+                        {inlineEditingValue && !getFieldOptions('deployed_product', [
+                          'FieldOps Core Gateway',
+                          'Edge Compute Appliance X1',
+                          'Secure Access Service Edge (SASE)',
+                          'AI Inference Node Enterprise',
+                          'Zero Trust Network Connector'
+                        ]).includes(inlineEditingValue) && (
+                          <option value={inlineEditingValue}>{inlineEditingValue}</option>
+                        )}
+                      </select>
+                      {renderInlineEditControls('deployed_product')}
+                    </div>
+                    {inlineError && <p className="text-xs text-red-600 mt-1">{inlineError}</p>}
+                  </div>
+                ) : (
+                  <div
+                    onClick={() => handleStartInlineEdit('deployed_product', deployment.deployed_product || 'FieldOps Core Gateway')}
+                    className="group flex items-center justify-between gap-2 p-1.5 -m-1.5 rounded-lg hover:bg-slate-50 border border-transparent hover:border-slate-200/80 cursor-pointer transition-all"
+                    title="Click to edit deployed product"
+                  >
+                    <div className="text-sm font-semibold text-slate-900 truncate">
+                      {deployment.deployed_product || 'FieldOps Core Gateway'}
+                    </div>
+                    <Pencil className="w-3 h-3 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                  </div>
+                )}
               </div>
 
               {/* Field 2: Deployment Type */}
@@ -583,9 +757,40 @@ export const DeploymentDetailPage = () => {
                   <Layers className="w-3.5 h-3.5 text-slate-400" />
                   <span>Deployment Type</span>
                 </div>
-                <div className="text-sm font-semibold text-slate-900">
-                  {deployment.deployment_type}
-                </div>
+                {inlineEditingField === 'deployment_type' ? (
+                  <div>
+                    <div className="flex items-center pt-0.5">
+                      <select
+                        autoFocus
+                        value={inlineEditingValue}
+                        onChange={(e) => setInlineEditingValue(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleSaveInlineEdit('deployment_type');
+                          if (e.key === 'Escape') handleCancelInlineEdit();
+                        }}
+                        disabled={isSavingInline}
+                        className="w-full text-sm font-semibold text-slate-900 border border-blue-500 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                      >
+                        {getFieldOptions('deployment_type', ['Deployment', 'POC', 'Pilot', 'Trial', 'Staging']).map((opt: string) => (
+                          <option key={opt} value={opt}>{opt}</option>
+                        ))}
+                      </select>
+                      {renderInlineEditControls('deployment_type')}
+                    </div>
+                    {inlineError && <p className="text-xs text-red-600 mt-1">{inlineError}</p>}
+                  </div>
+                ) : (
+                  <div
+                    onClick={() => handleStartInlineEdit('deployment_type', deployment.deployment_type)}
+                    className="group flex items-center justify-between gap-2 p-1.5 -m-1.5 rounded-lg hover:bg-slate-50 border border-transparent hover:border-slate-200/80 cursor-pointer transition-all"
+                    title="Click to edit deployment type"
+                  >
+                    <div className="text-sm font-semibold text-slate-900 truncate">
+                      {deployment.deployment_type}
+                    </div>
+                    <Pencil className="w-3 h-3 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                  </div>
+                )}
               </div>
 
               {/* Field 3: Account Owner */}
@@ -594,67 +799,258 @@ export const DeploymentDetailPage = () => {
                   <User className="w-3.5 h-3.5 text-slate-400" />
                   <span>Account Owner</span>
                 </div>
-                <div className="text-sm font-semibold text-slate-900">
-                  {deployment.account_owner || <span className="text-slate-400 font-normal italic">Unassigned</span>}
-                </div>
+                {inlineEditingField === 'account_owner' ? (
+                  <div>
+                    <div className="flex items-center pt-0.5">
+                      <input
+                        type="text"
+                        autoFocus
+                        value={inlineEditingValue}
+                        onChange={(e) => setInlineEditingValue(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleSaveInlineEdit('account_owner');
+                          if (e.key === 'Escape') handleCancelInlineEdit();
+                        }}
+                        disabled={isSavingInline}
+                        className="w-full text-sm font-semibold text-slate-900 border border-blue-500 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                        placeholder="Assign account owner..."
+                      />
+                      {renderInlineEditControls('account_owner')}
+                    </div>
+                    {inlineError && <p className="text-xs text-red-600 mt-1">{inlineError}</p>}
+                  </div>
+                ) : (
+                  <div
+                    onClick={() => handleStartInlineEdit('account_owner', deployment.account_owner)}
+                    className="group flex items-center justify-between gap-2 p-1.5 -m-1.5 rounded-lg hover:bg-slate-50 border border-transparent hover:border-slate-200/80 cursor-pointer transition-all"
+                    title="Click to edit account owner"
+                  >
+                    <div className="text-sm font-semibold text-slate-900 truncate">
+                      {deployment.account_owner || <span className="text-slate-400 font-normal italic">Unassigned</span>}
+                    </div>
+                    <Pencil className="w-3 h-3 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                  </div>
+                )}
               </div>
 
-              {/* Field 5: Lead Engineer */}
+              {/* Field 4: Lead Engineer */}
               <div className="space-y-1 pt-3">
                 <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 flex items-center space-x-1.5">
                   <Wrench className="w-3.5 h-3.5 text-slate-400" />
                   <span>Lead Engineer</span>
                 </div>
-                <div className="text-sm font-semibold text-slate-900">
-                  {deployment.lead_engineer || <span className="text-slate-400 font-normal italic">Unassigned</span>}
-                </div>
+                {inlineEditingField === 'lead_engineer' ? (
+                  <div>
+                    <div className="flex items-center pt-0.5">
+                      <input
+                        type="text"
+                        autoFocus
+                        value={inlineEditingValue}
+                        onChange={(e) => setInlineEditingValue(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleSaveInlineEdit('lead_engineer');
+                          if (e.key === 'Escape') handleCancelInlineEdit();
+                        }}
+                        disabled={isSavingInline}
+                        className="w-full text-sm font-semibold text-slate-900 border border-blue-500 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                        placeholder="Assign lead engineer..."
+                      />
+                      {renderInlineEditControls('lead_engineer')}
+                    </div>
+                    {inlineError && <p className="text-xs text-red-600 mt-1">{inlineError}</p>}
+                  </div>
+                ) : (
+                  <div
+                    onClick={() => handleStartInlineEdit('lead_engineer', deployment.lead_engineer)}
+                    className="group flex items-center justify-between gap-2 p-1.5 -m-1.5 rounded-lg hover:bg-slate-50 border border-transparent hover:border-slate-200/80 cursor-pointer transition-all"
+                    title="Click to edit lead engineer"
+                  >
+                    <div className="text-sm font-semibold text-slate-900 truncate">
+                      {deployment.lead_engineer || <span className="text-slate-400 font-normal italic">Unassigned</span>}
+                    </div>
+                    <Pencil className="w-3 h-3 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                  </div>
+                )}
               </div>
 
-              {/* Field 6: Assisting Engineer(s) */}
+              {/* Field 5: Assisting Engineer(s) */}
               <div className="space-y-1 pt-3">
                 <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 flex items-center space-x-1.5">
                   <Users className="w-3.5 h-3.5 text-slate-400" />
                   <span>Assisting Engineer(s)</span>
                 </div>
-                <div className="text-sm font-semibold text-slate-900">
-                  {deployment.assisting_engineers || <span className="text-slate-400 font-normal italic">None</span>}
-                </div>
+                {inlineEditingField === 'assisting_engineers' ? (
+                  <div>
+                    <div className="flex items-center pt-0.5">
+                      <input
+                        type="text"
+                        autoFocus
+                        value={inlineEditingValue}
+                        onChange={(e) => setInlineEditingValue(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleSaveInlineEdit('assisting_engineers');
+                          if (e.key === 'Escape') handleCancelInlineEdit();
+                        }}
+                        disabled={isSavingInline}
+                        className="w-full text-sm font-semibold text-slate-900 border border-blue-500 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                        placeholder="Add assisting engineer(s)..."
+                      />
+                      {renderInlineEditControls('assisting_engineers')}
+                    </div>
+                    {inlineError && <p className="text-xs text-red-600 mt-1">{inlineError}</p>}
+                  </div>
+                ) : (
+                  <div
+                    onClick={() => handleStartInlineEdit('assisting_engineers', deployment.assisting_engineers)}
+                    className="group flex items-center justify-between gap-2 p-1.5 -m-1.5 rounded-lg hover:bg-slate-50 border border-transparent hover:border-slate-200/80 cursor-pointer transition-all"
+                    title="Click to edit assisting engineer(s)"
+                  >
+                    <div className="text-sm font-semibold text-slate-900 truncate">
+                      {deployment.assisting_engineers || <span className="text-slate-400 font-normal italic">None</span>}
+                    </div>
+                    <Pencil className="w-3 h-3 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                  </div>
+                )}
               </div>
 
-              {/* Field 7: Datacenter / Location */}
+              {/* Field 6: Datacenter / Location */}
               <div className="space-y-1 pt-3">
                 <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 flex items-center space-x-1.5">
                   <MapPin className="w-3.5 h-3.5 text-slate-400" />
                   <span>Datacenter / Location</span>
                 </div>
-                <div className="text-sm font-semibold text-slate-900">
-                  {deployment.location}
-                </div>
+                {inlineEditingField === 'location' ? (
+                  <div>
+                    <div className="flex items-center pt-0.5">
+                      <input
+                        type="text"
+                        autoFocus
+                        value={inlineEditingValue}
+                        onChange={(e) => setInlineEditingValue(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleSaveInlineEdit('location');
+                          if (e.key === 'Escape') handleCancelInlineEdit();
+                        }}
+                        disabled={isSavingInline}
+                        className="w-full text-sm font-semibold text-slate-900 border border-blue-500 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                        placeholder="Datacenter or location..."
+                      />
+                      {renderInlineEditControls('location')}
+                    </div>
+                    {inlineError && <p className="text-xs text-red-600 mt-1">{inlineError}</p>}
+                  </div>
+                ) : (
+                  <div
+                    onClick={() => handleStartInlineEdit('location', deployment.location)}
+                    className="group flex items-center justify-between gap-2 p-1.5 -m-1.5 rounded-lg hover:bg-slate-50 border border-transparent hover:border-slate-200/80 cursor-pointer transition-all"
+                    title="Click to edit location"
+                  >
+                    <div className="text-sm font-semibold text-slate-900 truncate">
+                      {deployment.location}
+                    </div>
+                    <Pencil className="w-3 h-3 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                  </div>
+                )}
               </div>
 
-              {/* Field 8: Internal Group */}
+              {/* Field 7: Internal Group */}
               <div className="space-y-1 pt-3">
                 <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 flex items-center space-x-1.5">
                   <Building2 className="w-3.5 h-3.5 text-slate-400" />
                   <span>Internal Group</span>
                 </div>
-                <div className="text-sm font-semibold text-slate-900">
-                  {deployment.internal_group_name || <span className="text-slate-400 font-normal italic">None</span>}
-                </div>
+                {inlineEditingField === 'internal_group_name' ? (
+                  <div>
+                    <div className="flex items-center pt-0.5">
+                      <select
+                        autoFocus
+                        value={inlineEditingValue}
+                        onChange={(e) => setInlineEditingValue(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleSaveInlineEdit('internal_group_name');
+                          if (e.key === 'Escape') handleCancelInlineEdit();
+                        }}
+                        disabled={isSavingInline}
+                        className="w-full text-sm font-semibold text-slate-900 border border-blue-500 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                      >
+                        <option value="">None</option>
+                        {getFieldOptions('internal_group_name', [
+                          'Edge Infrastructure',
+                          'Core Platform',
+                          'Cloud Ops',
+                          'Security Team',
+                          'Hardware Lab'
+                        ]).map((opt: string) => (
+                          <option key={opt} value={opt}>{opt}</option>
+                        ))}
+                        {inlineEditingValue && !getFieldOptions('internal_group_name', [
+                          'Edge Infrastructure',
+                          'Core Platform',
+                          'Cloud Ops',
+                          'Security Team',
+                          'Hardware Lab'
+                        ]).includes(inlineEditingValue) && (
+                          <option value={inlineEditingValue}>{inlineEditingValue}</option>
+                        )}
+                      </select>
+                      {renderInlineEditControls('internal_group_name')}
+                    </div>
+                    {inlineError && <p className="text-xs text-red-600 mt-1">{inlineError}</p>}
+                  </div>
+                ) : (
+                  <div
+                    onClick={() => handleStartInlineEdit('internal_group_name', deployment.internal_group_name)}
+                    className="group flex items-center justify-between gap-2 p-1.5 -m-1.5 rounded-lg hover:bg-slate-50 border border-transparent hover:border-slate-200/80 cursor-pointer transition-all"
+                    title="Click to edit internal group"
+                  >
+                    <div className="text-sm font-semibold text-slate-900 truncate">
+                      {deployment.internal_group_name || <span className="text-slate-400 font-normal italic">None</span>}
+                    </div>
+                    <Pencil className="w-3 h-3 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                  </div>
+                )}
               </div>
 
-              {/* Field 9: Deployment Date */}
+              {/* Field 8: Deployment Date */}
               <div className="space-y-1 pt-3">
                 <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 flex items-center space-x-1.5">
                   <Calendar className="w-3.5 h-3.5 text-slate-400" />
                   <span>Deployment Date</span>
                 </div>
-                <div className="text-sm font-semibold text-slate-900">
-                  {formatDate(deployment.deployment_date || deployment.created_at)}
-                </div>
+                {inlineEditingField === 'deployment_date' ? (
+                  <div>
+                    <div className="flex items-center pt-0.5">
+                      <input
+                        type="date"
+                        autoFocus
+                        value={inlineEditingValue}
+                        onChange={(e) => setInlineEditingValue(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleSaveInlineEdit('deployment_date');
+                          if (e.key === 'Escape') handleCancelInlineEdit();
+                        }}
+                        disabled={isSavingInline}
+                        className="w-full text-sm font-semibold text-slate-900 border border-blue-500 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                      />
+                      {renderInlineEditControls('deployment_date')}
+                    </div>
+                    {inlineError && <p className="text-xs text-red-600 mt-1">{inlineError}</p>}
+                  </div>
+                ) : (
+                  <div
+                    onClick={() => handleStartInlineEdit('deployment_date', deployment.deployment_date)}
+                    className="group flex items-center justify-between gap-2 p-1.5 -m-1.5 rounded-lg hover:bg-slate-50 border border-transparent hover:border-slate-200/80 cursor-pointer transition-all"
+                    title="Click to edit deployment date"
+                  >
+                    <div className="text-sm font-semibold text-slate-900 truncate">
+                      {formatDate(deployment.deployment_date || deployment.created_at)}
+                    </div>
+                    <Pencil className="w-3 h-3 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                  </div>
+                )}
               </div>
 
-              {/* Field 10: Company Profile */}
+              {/* Field 9: Company Profile */}
               <div className="space-y-1 pt-3">
                 <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 flex items-center space-x-1.5">
                   <Building2 className="w-3.5 h-3.5 text-slate-400" />
@@ -670,50 +1066,149 @@ export const DeploymentDetailPage = () => {
                       <ExternalLink className="w-3.5 h-3.5" />
                     </Link>
                   ) : (
-                    <span className="text-sm font-semibold text-slate-900">{deployment.customer_name}</span>
+                    <div
+                      onClick={() => handleStartInlineEdit('customer_name', deployment.customer_name)}
+                      className="group flex items-center justify-between gap-2 p-1.5 -m-1.5 rounded-lg hover:bg-slate-50 border border-transparent hover:border-slate-200/80 cursor-pointer transition-all"
+                      title="Click to edit customer name"
+                    >
+                      <span className="text-sm font-semibold text-slate-900 truncate">{deployment.customer_name}</span>
+                      <Pencil className="w-3 h-3 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                    </div>
                   )}
                 </div>
               </div>
 
-              {/* Field 11: Deployment Folder */}
+              {/* Field 10: Deployment Folder */}
               <div className="space-y-1 pt-3">
                 <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 flex items-center space-x-1.5">
                   <FolderOpen className="w-3.5 h-3.5 text-slate-400" />
                   <span>Deployment Folder</span>
                 </div>
-                <div>
-                  {deployment.deployment_folder ? (
-                    <a
-                      href={deployment.deployment_folder.startsWith('http://') || deployment.deployment_folder.startsWith('https://') 
-                        ? deployment.deployment_folder 
-                        : `https://${deployment.deployment_folder}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center space-x-1.5 text-xs font-semibold text-blue-600 hover:text-blue-800 hover:underline bg-blue-50/70 border border-blue-200/80 px-2.5 py-1.5 rounded-lg transition-colors group"
-                      title={deployment.deployment_folder}
+                {inlineEditingField === 'deployment_folder' ? (
+                  <div>
+                    <div className="flex items-center pt-0.5">
+                      <input
+                        type="text"
+                        autoFocus
+                        value={inlineEditingValue}
+                        onChange={(e) => setInlineEditingValue(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleSaveInlineEdit('deployment_folder');
+                          if (e.key === 'Escape') handleCancelInlineEdit();
+                        }}
+                        disabled={isSavingInline}
+                        className="w-full text-sm font-semibold text-slate-900 border border-blue-500 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                        placeholder="https://..."
+                      />
+                      {renderInlineEditControls('deployment_folder')}
+                    </div>
+                    {inlineError && <p className="text-xs text-red-600 mt-1">{inlineError}</p>}
+                  </div>
+                ) : (
+                  <div className="group flex items-center justify-between gap-2 p-1.5 -m-1.5 rounded-lg hover:bg-slate-50 border border-transparent hover:border-slate-200/80 transition-all">
+                    {deployment.deployment_folder ? (
+                      <div className="flex items-center gap-2 min-w-0">
+                        <a
+                          href={deployment.deployment_folder.startsWith('http://') || deployment.deployment_folder.startsWith('https://') 
+                            ? deployment.deployment_folder 
+                            : `https://${deployment.deployment_folder}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center space-x-1.5 text-xs font-semibold text-blue-600 hover:text-blue-800 hover:underline bg-blue-50/70 border border-blue-200/80 px-2.5 py-1.5 rounded-lg transition-colors group/link"
+                          title={deployment.deployment_folder}
+                        >
+                          <FolderOpen className="w-3.5 h-3.5 text-blue-600 shrink-0 group-hover/link:scale-105 transition-transform" />
+                          <span className="truncate max-w-[170px]">Open OneDrive Folder</span>
+                          <ExternalLink className="w-3 h-3 text-blue-500 shrink-0" />
+                        </a>
+                      </div>
+                    ) : (
+                      <div
+                        onClick={() => handleStartInlineEdit('deployment_folder', deployment.deployment_folder)}
+                        className="text-sm text-slate-400 font-normal italic cursor-pointer flex-1"
+                        title="Click to add folder link"
+                      >
+                        No folder linked
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleStartInlineEdit('deployment_folder', deployment.deployment_folder)}
+                      className="p-1 text-slate-400 hover:text-blue-600 rounded-md hover:bg-slate-100 transition-all cursor-pointer opacity-0 group-hover:opacity-100 shrink-0"
+                      title="Edit folder link"
                     >
-                      <FolderOpen className="w-3.5 h-3.5 text-blue-600 shrink-0 group-hover:scale-105 transition-transform" />
-                      <span className="truncate max-w-[180px]">Open OneDrive Folder</span>
-                      <ExternalLink className="w-3 h-3 text-blue-500 shrink-0" />
-                    </a>
-                  ) : (
-                    <span className="text-sm text-slate-400 font-normal italic">No folder linked</span>
-                  )}
-                </div>
+                      <Pencil className="w-3 h-3" />
+                    </button>
+                  </div>
+                )}
               </div>
 
-              {/* Notes & Instructions */}
-              {deployment.notes && (
-                <div className="pt-3 space-y-1">
-                  <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 flex items-center space-x-1.5">
-                    <FileText className="w-3.5 h-3.5 text-slate-400" />
-                    <span>Notes & Technical Specs</span>
-                  </div>
-                  <div className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed bg-slate-50 p-3 rounded-lg border border-slate-200">
-                    {deployment.notes}
-                  </div>
+              {/* Field 11: Notes & Technical Specs */}
+              <div className="pt-3 space-y-1">
+                <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 flex items-center space-x-1.5">
+                  <FileText className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Notes & Technical Specs</span>
                 </div>
-              )}
+                {inlineEditingField === 'notes' ? (
+                  <div className="pt-0.5 space-y-1.5">
+                    <textarea
+                      rows={3}
+                      autoFocus
+                      value={inlineEditingValue}
+                      onChange={(e) => setInlineEditingValue(e.target.value)}
+                      onKeyDown={(e) => {
+                        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') handleSaveInlineEdit('notes');
+                        if (e.key === 'Escape') handleCancelInlineEdit();
+                      }}
+                      disabled={isSavingInline}
+                      className="w-full text-xs text-slate-900 border border-blue-500 rounded-md p-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                      placeholder="Enter notes & technical specs (Ctrl+Enter to save)..."
+                    />
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] text-slate-400">Ctrl+Enter to save, Esc to cancel</span>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => handleCancelInlineEdit()}
+                          disabled={isSavingInline}
+                          className="px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-md transition-colors cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleSaveInlineEdit('notes')}
+                          disabled={isSavingInline}
+                          className="px-2.5 py-1 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors cursor-pointer flex items-center gap-1 disabled:opacity-50"
+                        >
+                          {isSavingInline ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                          <span>Save</span>
+                        </button>
+                      </div>
+                    </div>
+                    {inlineError && <p className="text-xs text-red-600 mt-1">{inlineError}</p>}
+                  </div>
+                ) : (
+                  <div
+                    onClick={() => handleStartInlineEdit('notes', deployment.notes)}
+                    className="group p-2.5 rounded-lg hover:bg-slate-50 border border-transparent hover:border-slate-200/80 cursor-pointer transition-all relative"
+                    title="Click to edit notes"
+                  >
+                    {deployment.notes ? (
+                      <div className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed bg-slate-50 p-2.5 rounded-md border border-slate-200/70 group-hover:border-slate-300">
+                        {deployment.notes}
+                      </div>
+                    ) : (
+                      <div className="text-xs text-slate-400 font-normal italic flex items-center justify-between">
+                        <span>Click to add notes...</span>
+                      </div>
+                    )}
+                    <div className="absolute top-3.5 right-3.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Pencil className="w-3 h-3 text-slate-400" />
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
