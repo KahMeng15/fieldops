@@ -5,6 +5,8 @@ import DeploymentsPage from './pages/DeploymentsPage';
 import DeploymentDetailPage from './pages/DeploymentDetailPage';
 import Layout from './components/Layout';
 import SettingsPage from './pages/SettingsPage';
+import CompaniesPage from './pages/CompaniesPage';
+import CompanyDetailPage from './pages/CompanyDetailPage';
 
 const PrivateRoute = () => {
   const token = localStorage.getItem('access_token');
@@ -20,6 +22,8 @@ const router = createBrowserRouter([
     element: <PrivateRoute />,
     children: [
       { path: '/', element: <DashboardPage /> },
+      { path: '/companies', element: <CompaniesPage /> },
+      { path: '/companies/:id', element: <CompanyDetailPage /> },
       { path: '/deployments', element: <DeploymentsPage /> },
       { path: '/deployments/:id', element: <DeploymentDetailPage /> },
       { path: '/settings/user', element: <SettingsPage type="user" /> },

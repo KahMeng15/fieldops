@@ -8,9 +8,9 @@ import {
   ExternalLink, 
   MapPin, 
   Layers, 
-  Building2,
   Calendar,
-  AlertCircle
+  AlertCircle,
+  Package
 } from 'lucide-react';
 import { getDeployments, deleteDeployment, getDeploymentFieldSettings, type DeploymentData } from '../api';
 import NewDeploymentModal from '../components/NewDeploymentModal';
@@ -69,6 +69,7 @@ export const DeploymentsPage = () => {
       const matchesSearch = 
         d.customer_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         d.location.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (d.deployed_product && d.deployed_product.toLowerCase().includes(searchQuery.toLowerCase())) ||
         (d.internal_group_name && d.internal_group_name.toLowerCase().includes(searchQuery.toLowerCase()));
 
       const matchesType = typeFilter === 'all' || d.deployment_type === typeFilter;
@@ -196,11 +197,12 @@ export const DeploymentsPage = () => {
             <table className="min-w-full divide-y divide-slate-200">
               <thead className="bg-slate-50 text-slate-600">
                 <tr>
-                  <th className="px-6 py-3.5 text-left text-xs font-semibold uppercase tracking-wider">Customer / Group</th>
+                  <th className="px-6 py-3.5 text-left text-xs font-semibold uppercase tracking-wider">Company / Customer</th>
                   <th className="px-6 py-3.5 text-left text-xs font-semibold uppercase tracking-wider">Location</th>
+                  <th className="px-6 py-3.5 text-left text-xs font-semibold uppercase tracking-wider">Deployed Product</th>
                   <th className="px-6 py-3.5 text-left text-xs font-semibold uppercase tracking-wider">Type</th>
                   <th className="px-6 py-3.5 text-left text-xs font-semibold uppercase tracking-wider">Status</th>
-                  <th className="px-6 py-3.5 text-left text-xs font-semibold uppercase tracking-wider">Created</th>
+                  <th className="px-6 py-3.5 text-left text-xs font-semibold uppercase tracking-wider">Date</th>
                   <th className="px-6 py-3.5 text-right text-xs font-semibold uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
@@ -209,8 +211,8 @@ export const DeploymentsPage = () => {
                   <tr key={d.id} className="hover:bg-slate-50/70 transition-colors">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center space-x-3">
-                        <div className="w-9 h-9 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-600">
-                          <Building2 className="w-4 h-4" />
+                        <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-700 border border-blue-100 flex items-center justify-center font-bold text-sm">
+                          {d.customer_name ? d.customer_name.charAt(0).toUpperCase() : 'C'}
                         </div>
                         <div>
                           <Link 
@@ -236,6 +238,17 @@ export const DeploymentsPage = () => {
                     </td>
 
                     <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center space-x-2">
+                        <span className="w-6 h-6 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 flex items-center justify-center shrink-0">
+                          <Package className="w-3.5 h-3.5" />
+                        </span>
+                        <span className="text-xs font-bold text-slate-800">
+                          {d.deployed_product || 'FieldOps Core Gateway'}
+                        </span>
+                      </div>
+                    </td>
+
+                    <td className="px-6 py-4 whitespace-nowrap">
                       <span className="inline-flex items-center space-x-1 text-xs px-2.5 py-1 rounded-md bg-slate-100 font-medium text-slate-700 border border-slate-200">
                         <Layers className="w-3 h-3 text-slate-500" />
                         <span>{d.deployment_type}</span>
@@ -252,7 +265,9 @@ export const DeploymentsPage = () => {
                       <div className="flex items-center space-x-1.5">
                         <Calendar className="w-3.5 h-3.5 text-slate-400" />
                         <span>
-                          {d.created_at ? new Date(d.created_at).toLocaleDateString() : '—'}
+                          {d.deployment_date 
+                            ? new Date(d.deployment_date).toLocaleDateString()
+                            : d.created_at ? new Date(d.created_at).toLocaleDateString() : '—'}
                         </span>
                       </div>
                     </td>

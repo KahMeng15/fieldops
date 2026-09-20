@@ -11,7 +11,9 @@ import {
   Database, 
   HardDrive,
   Activity,
-  MapPin
+  MapPin,
+  Package,
+  Building2
 } from 'lucide-react';
 import { getDeployments, type DeploymentData } from '../api';
 import NewDeploymentModal from '../components/NewDeploymentModal';
@@ -75,9 +77,16 @@ export const DashboardPage = () => {
           </p>
         </div>
         <div className="flex items-center space-x-3">
+          <Link
+            to="/companies"
+            className="flex items-center space-x-2 px-3.5 py-2.5 text-sm font-medium text-slate-700 hover:text-slate-900 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg shadow-xs transition-all"
+          >
+            <Building2 className="w-4 h-4 text-slate-500" />
+            <span>Companies & Locations</span>
+          </Link>
           <button
             onClick={() => setIsModalOpen(true)}
-            className="flex items-center space-x-2 px-4 py-2.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm hover:shadow transition-all"
+            className="flex items-center space-x-2 px-4 py-2.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm hover:shadow transition-all cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>New Deployment</span>
@@ -197,7 +206,12 @@ export const DashboardPage = () => {
                         {dep.pre_poc_status || 'Pending'}
                       </span>
                     </div>
-                    <div className="flex items-center space-x-3 text-xs text-slate-500">
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
+                      <span className="flex items-center space-x-1 font-medium text-indigo-700">
+                        <Package className="w-3 h-3 text-indigo-500" />
+                        <span>{dep.deployed_product || 'FieldOps Core Gateway'}</span>
+                      </span>
+                      <span>•</span>
                       <span className="flex items-center space-x-1">
                         <MapPin className="w-3 h-3 text-slate-400" />
                         <span>{dep.location}</span>

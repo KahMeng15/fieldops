@@ -39,6 +39,38 @@ class User(Base):
     team = relationship("Team")
     role = relationship("Role")
 
+class Company(Base):
+    __tablename__ = "companies"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String, index=True, nullable=False)
+    description = Column(Text, nullable=True)
+    website = Column(String, nullable=True)
+    contact_email = Column(String, nullable=True)
+    contact_phone = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    deleted_at = Column(DateTime, nullable=True)
+
+    locations = relationship("Location", back_populates="company", cascade="all, delete-orphan")
+    deployments = relationship("Deployment", back_populates="company")
+
+class Location(Base):
+    __tablename__ = "locations"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    name = Column(String, nullable=False)
+    address = Column(Text, nullable=True)
+    city = Column(String, nullable=True)
+    country = Column(String, nullable=True)
+    datacenter_tier = Column(String, nullable=True)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    deleted_at = Column(DateTime, nullable=True)
+
+    company = relationship("Company", back_populates="locations")
+    deployments = relationship("Deployment", back_populates="location_rel")
+
 class DeploymentType(str, enum.Enum):
     POC = "POC"
     Deployment = "Deployment"
@@ -46,6 +78,10 @@ class DeploymentType(str, enum.Enum):
 class Deployment(Base):
     __tablename__ = "deployments"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="SET NULL"), nullable=True)
+    location_id = Column(UUID(as_uuid=True), ForeignKey("locations.id", ondelete="SET NULL"), nullable=True)
+    deployed_product = Column(String, nullable=True)
+    deployment_date = Column(DateTime, default=datetime.utcnow)
     internal_group_name = Column(String)
     customer_name = Column(String, index=True)
     location = Column(String)
@@ -61,6 +97,8 @@ class Deployment(Base):
     deleted_at = Column(DateTime, nullable=True)
     created_by_id = Column(UUID(as_uuid=True), ForeignKey("users.id"))
 
+    company = relationship("Company", back_populates="deployments")
+    location_rel = relationship("Location", back_populates="deployments")
     account_owner = relationship("User", foreign_keys=[account_owner_id])
     created_by = relationship("User", foreign_keys=[created_by_id])
     engineers = relationship("DeploymentEngineer", back_populates="deployment")

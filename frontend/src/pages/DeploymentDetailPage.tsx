@@ -1,23 +1,24 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { 
-  ArrowLeft, 
+  Building2, 
   MapPin, 
-  Calendar, 
   Key, 
   Plus, 
-  Eye, 
-  EyeOff, 
+  Trash2, 
+  ArrowLeft, 
   Copy, 
   Check, 
-  ShieldCheck, 
-  Trash2,
-  Terminal, 
-  Database, 
-  Globe, 
+  Eye, 
+  EyeOff, 
+  Calendar,
   Lock,
-  Building2,
-  FileText
+  Terminal,
+  Database,
+  Globe,
+  FileText,
+  Package,
+  ShieldCheck
 } from 'lucide-react';
 import { 
   getDeployment, 
@@ -48,16 +49,30 @@ export const DeploymentDetailPage = () => {
     'Planning', 'Pre-POC', 'In Progress', 'Staging', 'Active', 'Completed'
   ]);
 
+  const formatDate = (dateStr?: string) => {
+    if (!dateStr) return 'N/A';
+    try {
+      const d = new Date(dateStr);
+      return isNaN(d.getTime()) ? 'N/A' : d.toLocaleDateString();
+    } catch {
+      return 'N/A';
+    }
+  };
+
   const fetchDetails = async () => {
     if (!id) return;
     try {
       setIsLoading(true);
-      const [depData, credData] = await Promise.all([
-        getDeployment(id),
-        getCredentials(id)
-      ]);
+      const depData = await getDeployment(id);
       setDeployment(depData);
-      setCredentials(credData || []);
+
+      try {
+        const credData = await getCredentials(id);
+        setCredentials(credData || []);
+      } catch (credErr) {
+        console.warn('Could not load credentials for deployment:', credErr);
+        setCredentials([]);
+      }
     } catch (err) {
       console.error('Failed to fetch deployment details', err);
     } finally {
@@ -174,7 +189,7 @@ export const DeploymentDetailPage = () => {
 
       {/* Main Header Banner */}
       <div className="bg-white p-6 rounded-xl border border-slate-200/80 shadow-xs flex flex-col md:flex-row md:items-center md:justify-between gap-6">
-        <div className="space-y-2">
+        <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-3">
             <h1 className="text-2xl sm:text-3xl font-bold text-slate-900">
               {deployment.customer_name}
@@ -182,6 +197,12 @@ export const DeploymentDetailPage = () => {
             <span className="px-2.5 py-0.5 rounded-md text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200">
               {deployment.deployment_type}
             </span>
+            <div className="flex items-center space-x-1.5 px-3 py-1 bg-indigo-50 border border-indigo-200 rounded-lg">
+              <Package className="w-3.5 h-3.5 text-indigo-600" />
+              <span className="text-xs font-bold text-indigo-900">
+                {deployment.deployed_product || 'FieldOps Core Gateway'}
+              </span>
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500">
@@ -197,8 +218,19 @@ export const DeploymentDetailPage = () => {
             )}
             <span className="flex items-center space-x-1">
               <Calendar className="w-3.5 h-3.5 text-slate-400" />
-              <span>Created {new Date(deployment.created_at || '').toLocaleDateString()}</span>
+              <span>
+                Deployed: {formatDate(deployment.deployment_date || deployment.created_at)}
+              </span>
             </span>
+            {deployment.company_id && (
+              <Link 
+                to={`/companies/${deployment.company_id}`}
+                className="text-blue-600 hover:underline flex items-center space-x-1 font-medium"
+              >
+                <Building2 className="w-3.5 h-3.5" />
+                <span>View Company Profile</span>
+              </Link>
+            )}
           </div>
         </div>
 

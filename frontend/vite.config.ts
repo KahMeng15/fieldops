@@ -14,6 +14,7 @@ export default defineConfig({
       '/api': {
         target: process.env.BACKEND_URL || 'http://localhost:8000',
         changeOrigin: true,
+        autoRewrite: true,
       },
     },
   },

@@ -31,9 +31,55 @@ class Token(BaseModel):
     refresh_token: str
     token_type: str
 
+class LocationBase(BaseModel):
+    name: str
+    address: Optional[str] = None
+    city: Optional[str] = None
+    country: Optional[str] = None
+    datacenter_tier: Optional[str] = None
+    notes: Optional[str] = None
+
+class LocationCreate(LocationBase):
+    company_id: Optional[UUID] = None
+
+class LocationResponse(LocationBase):
+    id: UUID
+    company_id: UUID
+    deployments_count: Optional[int] = 0
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class CompanyBase(BaseModel):
+    name: str
+    description: Optional[str] = None
+    website: Optional[str] = None
+    contact_email: Optional[str] = None
+    contact_phone: Optional[str] = None
+
+class CompanyCreate(CompanyBase):
+    pass
+
+class CompanyResponse(CompanyBase):
+    id: UUID
+    locations_count: Optional[int] = 0
+    deployments_count: Optional[int] = 0
+    locations: Optional[List[LocationResponse]] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
 class DeploymentSchema(BaseModel):
-    customer_name: str
-    location: str
+    customer_name: Optional[str] = None
+    location: Optional[str] = None
+    company_id: Optional[UUID] = None
+    location_id: Optional[UUID] = None
+    deployed_product: Optional[str] = "FieldOps Core Gateway"
+    deployment_date: Optional[datetime] = None
     internal_group_name: Optional[str] = None
     deployment_type: Optional[str] = None
     pre_poc_status: Optional[str] = None
@@ -59,7 +105,22 @@ class DeploymentResponse(DeploymentSchema):
     @model_validator(mode="before")
     @classmethod
     def from_orm_extra(cls, data: Any) -> Any:
-        if hasattr(data, "__dict__"):
+        if hasattr(data, "__table__"):
+            # Trigger reload if expired
+            _ = getattr(data, "id", None)
+            cols = {c.name for c in data.__table__.columns}
+            d = {}
+            for col in cols:
+                d[col] = getattr(data, col, None)
+            for k, v in getattr(data, "__dict__", {}).items():
+                if not k.startswith("_") and k not in d:
+                    d[k] = v
+            if hasattr(data, "company") and data.company:
+                d["customer_name"] = data.company.name
+            if hasattr(data, "location_rel") and data.location_rel:
+                d["location"] = data.location_rel.name
+            return d
+        elif hasattr(data, "__dict__"):
             return {k: v for k, v in data.__dict__.items() if not k.startswith("_")}
         return data
 

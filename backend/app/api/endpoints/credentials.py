@@ -11,6 +11,7 @@ from uuid import UUID
 router = APIRouter()
 MASTER_KEY = get_master_key()
 
+@router.get("", response_model=List[CredentialResponse])
 @router.get("/", response_model=List[CredentialResponse])
 async def list_credentials(
     deployment_id: UUID,
@@ -34,6 +35,7 @@ async def list_credentials(
         ))
     return result
 
+@router.post("", response_model=CredentialResponse, status_code=201)
 @router.post("/", response_model=CredentialResponse, status_code=201)
 async def create_credential(
     request: Request,

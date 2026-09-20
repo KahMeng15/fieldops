@@ -1,27 +1,67 @@
 import React, { useState, useEffect } from 'react';
-import { X, Server, Building2, MapPin, Tag, FileText, CheckCircle, Users } from 'lucide-react';
+import { 
+  X, 
+  Server, 
+  Building2, 
+  MapPin, 
+  Tag, 
+  FileText, 
+  CheckCircle, 
+  Users, 
+  Package, 
+  Calendar, 
+  Plus 
+} from 'lucide-react';
 import { 
   createDeployment, 
   getDeploymentFieldSettings, 
+  getCompanies, 
+  getCompanyLocations,
   type DeploymentData, 
   type DeploymentFieldsSettings,
-  type DeploymentFieldConfig
+  type DeploymentFieldConfig,
+  type Company,
+  type CompanyLocation
 } from '../api';
+import NewCompanyModal from './NewCompanyModal';
+import NewLocationModal from './NewLocationModal';
 
 interface NewDeploymentModalProps {
   isOpen: boolean;
+  defaultCompanyId?: string;
+  defaultLocationId?: string;
+  defaultCompanyName?: string;
+  defaultLocationName?: string;
   onClose: () => void;
   onSuccess: (deployment: DeploymentData) => void;
 }
 
 export const NewDeploymentModal: React.FC<NewDeploymentModalProps> = ({
   isOpen,
+  defaultCompanyId,
+  defaultLocationId,
+  defaultCompanyName,
+  defaultLocationName,
   onClose,
   onSuccess,
 }) => {
   const [settings, setSettings] = useState<DeploymentFieldsSettings | null>(null);
-  const [customerName, setCustomerName] = useState('');
-  const [location, setLocation] = useState('');
+  
+  // Company & Location State
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string>(defaultCompanyId || '');
+  const [companyLocations, setCompanyLocations] = useState<CompanyLocation[]>([]);
+  const [selectedLocationId, setSelectedLocationId] = useState<string>(defaultLocationId || '');
+  const [customerName, setCustomerName] = useState(defaultCompanyName || '');
+  const [location, setLocation] = useState(defaultLocationName || '');
+
+  // Sub-modals for inline creation
+  const [isInlineCompanyModalOpen, setIsInlineCompanyModalOpen] = useState(false);
+  const [isInlineLocationModalOpen, setIsInlineLocationModalOpen] = useState(false);
+
+  // Deployment Core State
+  const [deployedProduct, setDeployedProduct] = useState('FieldOps Core Gateway');
+  const [deploymentDate, setDeploymentDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [deploymentType, setDeploymentType] = useState('Deployment');
   const [internalGroupName, setInternalGroupName] = useState('');
   const [status, setStatus] = useState('Planning');
@@ -31,31 +71,67 @@ export const NewDeploymentModal: React.FC<NewDeploymentModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Load settings when modal is opened
+  // Load companies
+  const loadCompaniesList = async () => {
+    try {
+      const list = await getCompanies();
+      setCompanies(list || []);
+    } catch {
+      // Fallback silent
+    }
+  };
+
+  // Load locations when company changes
+  const loadLocationsForCompany = async (compId: string) => {
+    if (!compId) {
+      setCompanyLocations([]);
+      return;
+    }
+    try {
+      const locs = await getCompanyLocations(compId);
+      setCompanyLocations(locs || []);
+      if (defaultLocationId && locs.some(l => l.id === defaultLocationId)) {
+        setSelectedLocationId(defaultLocationId);
+      }
+    } catch {
+      setCompanyLocations([]);
+    }
+  };
+
+  // Load settings and company data when modal is opened
   useEffect(() => {
     if (isOpen) {
+      loadCompaniesList();
+
+      if (defaultCompanyId) {
+        setSelectedCompanyId(defaultCompanyId);
+        loadLocationsForCompany(defaultCompanyId);
+      }
+      if (defaultCompanyName) setCustomerName(defaultCompanyName);
+      if (defaultLocationId) setSelectedLocationId(defaultLocationId);
+      if (defaultLocationName) setLocation(defaultLocationName);
+
       getDeploymentFieldSettings()
         .then(data => {
           setSettings(data);
           
-          // Pre-populate default values from settings
           const fields = data.fields || [];
+          const productField = fields.find(f => f.key === 'deployed_product');
           const typeField = fields.find(f => f.key === 'deployment_type');
           const groupField = fields.find(f => f.key === 'internal_group_name');
           const statusField = fields.find(f => f.key === 'pre_poc_status');
-          const locField = fields.find(f => f.key === 'location');
           const notesField = fields.find(f => f.key === 'notes');
 
+          if (productField?.default_value) setDeployedProduct(productField.default_value);
           setDeploymentType(typeField?.default_value ?? '');
           setInternalGroupName(groupField?.default_value ?? '');
           setStatus(statusField?.default_value ?? '');
-          setLocation(locField?.default_value ?? '');
           setNotes(notesField?.default_value ?? '');
 
           // Initialize custom/dynamic fields default values
           const initialCustom: Record<string, string> = {};
           fields
-            .filter(f => !['customer_name', 'location', 'deployment_type', 'internal_group_name', 'pre_poc_status', 'notes'].includes(f.key))
+            .filter(f => !['customer_name', 'location', 'deployed_product', 'deployment_date', 'deployment_type', 'internal_group_name', 'pre_poc_status', 'notes'].includes(f.key))
             .forEach(f => {
               initialCustom[f.key] = f.default_value ?? '';
             });
@@ -63,14 +139,17 @@ export const NewDeploymentModal: React.FC<NewDeploymentModalProps> = ({
           setOtherValues({});
         })
         .catch(() => {
-          // Fallback if settings endpoint fails
           setDeploymentType('');
           setStatus('');
         });
     } else {
       // Reset form on close
-      setCustomerName('');
-      setLocation('');
+      if (!defaultCompanyId) setSelectedCompanyId('');
+      if (!defaultLocationId) setSelectedLocationId('');
+      if (!defaultCompanyName) setCustomerName('');
+      if (!defaultLocationName) setLocation('');
+      setDeployedProduct('FieldOps Core Gateway');
+      setDeploymentDate(new Date().toISOString().split('T')[0]);
       setDeploymentType('');
       setInternalGroupName('');
       setStatus('');
@@ -79,7 +158,28 @@ export const NewDeploymentModal: React.FC<NewDeploymentModalProps> = ({
       setOtherValues({});
       setError(null);
     }
-  }, [isOpen]);
+  }, [isOpen, defaultCompanyId, defaultLocationId, defaultCompanyName, defaultLocationName]);
+
+  const handleCompanyChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const compId = e.target.value;
+    setSelectedCompanyId(compId);
+    const found = companies.find(c => c.id === compId);
+    if (found) {
+      setCustomerName(found.name);
+    }
+    setSelectedLocationId('');
+    setLocation('');
+    loadLocationsForCompany(compId);
+  };
+
+  const handleLocationChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const locId = e.target.value;
+    setSelectedLocationId(locId);
+    const found = companyLocations.find(l => l.id === locId);
+    if (found) {
+      setLocation(found.name);
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -100,13 +200,20 @@ export const NewDeploymentModal: React.FC<NewDeploymentModalProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!customerName.trim()) {
-      setError('Customer name is required.');
+    const finalCustomerName = customerName.trim();
+    if (!finalCustomerName) {
+      setError('Please select or specify a company.');
       return;
     }
 
-    if (isFieldEnabled('location') && isFieldRequired('location', true) && !location.trim()) {
-      setError('Location is required.');
+    const finalLocationName = location.trim();
+    if (!finalLocationName) {
+      setError('Please select or specify a location.');
+      return;
+    }
+
+    if (!deployedProduct.trim()) {
+      setError('Deployed Product is required.');
       return;
     }
 
@@ -114,7 +221,10 @@ export const NewDeploymentModal: React.FC<NewDeploymentModalProps> = ({
     setError(null);
 
     try {
-      // Resolve write-in values for fields where "Other" was selected
+      const finalProduct = (deployedProduct === 'Other' && otherValues['deployed_product']?.trim())
+        ? otherValues['deployed_product'].trim()
+        : deployedProduct;
+
       const finalDeploymentType = (deploymentType === 'Other' && otherValues['deployment_type']?.trim())
         ? otherValues['deployment_type'].trim()
         : deploymentType;
@@ -127,10 +237,13 @@ export const NewDeploymentModal: React.FC<NewDeploymentModalProps> = ({
         ? otherValues['pre_poc_status'].trim()
         : status;
 
-      // Construct payload with all enabled fields saving directly to their DB columns
       const payload: Record<string, any> = {
-        customer_name: customerName.trim(),
-        location: isFieldEnabled('location') ? location.trim() : 'N/A',
+        company_id: selectedCompanyId || undefined,
+        location_id: selectedLocationId || undefined,
+        customer_name: finalCustomerName,
+        location: finalLocationName,
+        deployed_product: finalProduct.trim(),
+        deployment_date: deploymentDate ? new Date(deploymentDate).toISOString() : new Date().toISOString(),
       };
 
       if (isFieldEnabled('deployment_type')) {
@@ -148,7 +261,7 @@ export const NewDeploymentModal: React.FC<NewDeploymentModalProps> = ({
 
       // Add all other custom or non-system fields directly to payload to save in PostgreSQL
       const otherConfiguredFields = (settings?.fields || []).filter(
-        f => !['customer_name', 'location', 'deployment_type', 'internal_group_name', 'pre_poc_status', 'notes'].includes(f.key) && f.enabled
+        f => !['customer_name', 'location', 'deployed_product', 'deployment_date', 'deployment_type', 'internal_group_name', 'pre_poc_status', 'notes'].includes(f.key) && f.enabled
       );
 
       for (const cf of otherConfiguredFields) {
@@ -163,328 +276,415 @@ export const NewDeploymentModal: React.FC<NewDeploymentModalProps> = ({
       onSuccess(result);
       onClose();
     } catch (err: any) {
-      setError(err?.response?.data?.detail || 'Failed to create deployment. Please try again.');
+      setError(err?.response?.data?.detail || 'Failed to create deployment record. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const renderFieldItem = (f: DeploymentFieldConfig) => {
-    switch (f.key) {
-      case 'customer_name':
-        return (
-          <div key={f.key}>
-            <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
-              {f.label} *
-            </label>
-            <div className="relative">
-              <Building2 className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
-              <input
-                type="text"
-                required
-                value={customerName}
-                onChange={e => setCustomerName(e.target.value)}
-                placeholder="e.g. Acme Corporation"
-                className="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-              />
-            </div>
-          </div>
-        );
-
-      case 'location':
-        return (
-          <div key={f.key}>
-            <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
-              {f.label} {f.required && '*'}
-            </label>
-            <div className="relative">
-              <MapPin className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
-              <input
-                type="text"
-                required={f.required}
-                value={location}
-                onChange={e => setLocation(e.target.value)}
-                placeholder="e.g. US-East (Virginia)"
-                className="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-              />
-            </div>
-          </div>
-        );
-
-      case 'deployment_type': {
-        const options = [...(f.options || ['Deployment', 'POC'])];
-        if (f.allow_other && !options.includes('Other')) {
-          options.push('Other');
-        }
-        return (
-          <div key={f.key}>
-            <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
-              {f.label} {f.required && '*'}
-            </label>
-            <div className="relative">
-              <Tag className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
-              <select
-                value={deploymentType}
-                required={f.required}
-                onChange={e => setDeploymentType(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-white"
-              >
-                <option value="">-- Select {f.label} --</option>
-                {options.map(opt => (
-                  <option key={opt} value={opt}>
-                    {opt}
-                  </option>
-                ))}
-              </select>
-            </div>
-            {f.allow_other && deploymentType === 'Other' && (
-              <div className="mt-2 animate-in fade-in duration-150">
-                <input
-                  type="text"
-                  required={f.required}
-                  value={otherValues['deployment_type'] || ''}
-                  onChange={e => setOtherValues(prev => ({ ...prev, deployment_type: e.target.value }))}
-                  placeholder={f.other_placeholder || `Specify other ${f.label.toLowerCase()}...`}
-                  className="w-full px-3 py-2 text-xs border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-blue-50/40 text-slate-900"
-                />
-              </div>
-            )}
-          </div>
-        );
-      }
-
-      case 'internal_group_name': {
-        const options = [...(f.options || [])];
-        if (f.allow_other && !options.includes('Other')) {
-          options.push('Other');
-        }
-        return (
-          <div key={f.key}>
-            <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
-              {f.label} {f.required && '*'}
-            </label>
-            {options.length > 0 ? (
-              <div className="relative">
-                <Users className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
-                <select
-                  value={internalGroupName}
-                  required={f.required}
-                  onChange={e => setInternalGroupName(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-white"
-                >
-                  <option value="">-- Select {f.label} --</option>
-                  {options.map(opt => (
-                    <option key={opt} value={opt}>
-                      {opt}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            ) : (
-              <input
-                type="text"
-                required={f.required}
-                value={internalGroupName}
-                onChange={e => setInternalGroupName(e.target.value)}
-                placeholder="e.g. Edge Infrastructure"
-                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-              />
-            )}
-            {f.allow_other && internalGroupName === 'Other' && (
-              <div className="mt-2 animate-in fade-in duration-150">
-                <input
-                  type="text"
-                  required={f.required}
-                  value={otherValues['internal_group_name'] || ''}
-                  onChange={e => setOtherValues(prev => ({ ...prev, internal_group_name: e.target.value }))}
-                  placeholder={f.other_placeholder || `Specify other ${f.label.toLowerCase()}...`}
-                  className="w-full px-3 py-2 text-xs border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-blue-50/40 text-slate-900"
-                />
-              </div>
-            )}
-          </div>
-        );
-      }
-
-      case 'pre_poc_status': {
-        const options = [...(f.options || ['Planning', 'Pre-POC', 'In Progress', 'Staging', 'Active', 'Completed'])];
-        if (f.allow_other && !options.includes('Other')) {
-          options.push('Other');
-        }
-        return (
-          <div key={f.key}>
-            <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
-              {f.label} {f.required && '*'}
-            </label>
-            <select
-              value={status}
-              required={f.required}
-              onChange={e => setStatus(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-white"
-            >
-              <option value="">-- Select {f.label} --</option>
-              {options.map(opt => (
-                <option key={opt} value={opt}>
-                  {opt}
-                </option>
-              ))}
-            </select>
-            {f.allow_other && status === 'Other' && (
-              <div className="mt-2 animate-in fade-in duration-150">
-                <input
-                  type="text"
-                  required={f.required}
-                  value={otherValues['pre_poc_status'] || ''}
-                  onChange={e => setOtherValues(prev => ({ ...prev, pre_poc_status: e.target.value }))}
-                  placeholder={f.other_placeholder || `Specify other ${f.label.toLowerCase()}...`}
-                  className="w-full px-3 py-2 text-xs border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-blue-50/40 text-slate-900"
-                />
-              </div>
-            )}
-          </div>
-        );
-      }
-
-      case 'notes':
-        return (
-          <div key={f.key}>
-            <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
-              {f.label} {f.required && '*'}
-            </label>
-            <div className="relative">
-              <FileText className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
-              <textarea
-                rows={3}
-                required={f.required}
-                value={notes}
-                onChange={e => setNotes(e.target.value)}
-                placeholder="Details regarding hardware specs, network requirements, or primary point of contact..."
-                className="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-              />
-            </div>
-          </div>
-        );
-
-      default: {
-        const options = [...(f.options || [])];
-        if (f.allow_other && !options.includes('Other')) {
-          options.push('Other');
-        }
-        return (
-          <div key={f.key}>
-            <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
-              {f.label} {f.required && '*'}
-            </label>
-            {f.type === 'select' && options.length > 0 ? (
-              <>
-                <select
-                  required={f.required}
-                  value={customValues[f.key] || ''}
-                  onChange={e => setCustomValues(prev => ({ ...prev, [f.key]: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
-                >
-                  <option value="">-- Select {f.label} --</option>
-                  {options.map(opt => (
-                    <option key={opt} value={opt}>
-                      {opt}
-                    </option>
-                  ))}
-                </select>
-                {f.allow_other && customValues[f.key] === 'Other' && (
-                  <div className="mt-2 animate-in fade-in duration-150">
-                    <input
-                      type="text"
-                      required={f.required}
-                      value={otherValues[f.key] || ''}
-                      onChange={e => setOtherValues(prev => ({ ...prev, [f.key]: e.target.value }))}
-                      placeholder={f.other_placeholder || `Specify other ${f.label.toLowerCase()}...`}
-                      className="w-full px-3 py-2 text-xs border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-blue-50/40 text-slate-900"
-                    />
-                  </div>
-                )}
-              </>
-            ) : f.type === 'textarea' ? (
-              <textarea
-                required={f.required}
-                rows={2}
-                value={customValues[f.key] || ''}
-                onChange={e => setCustomValues(prev => ({ ...prev, [f.key]: e.target.value }))}
-                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              />
-            ) : (
-              <input
-                type="text"
-                required={f.required}
-                value={customValues[f.key] || ''}
-                onChange={e => setCustomValues(prev => ({ ...prev, [f.key]: e.target.value }))}
-                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              />
-            )}
-          </div>
-        );
-      }
-    }
-  };
+  const productField = getField('deployed_product');
+  const productOptions = [
+    ...(productField?.options || [
+      'FieldOps Core Gateway',
+      'Edge Compute Appliance X1',
+      'Secure Access Service Edge (SASE)',
+      'AI Inference Node Enterprise',
+      'Zero Trust Network Connector'
+    ])
+  ];
+  if (productField?.allow_other && !productOptions.includes('Other')) {
+    productOptions.push('Other');
+  }
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-lg w-full overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-        {/* Modal Header */}
-        <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800">
-          <div className="flex items-center space-x-2">
-            <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white">
-              <Server className="w-4 h-4" />
+    <>
+      <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-xl w-full overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+          {/* Modal Header */}
+          <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800">
+            <div className="flex items-center space-x-2.5">
+              <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white shadow-sm">
+                <Server className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-base">Record New Deployment</h3>
+                <p className="text-[11px] text-slate-400">
+                  Record a deployed product at a company datacenter location
+                </p>
+              </div>
             </div>
-            <h3 className="font-semibold text-base">Create New Deployment</h3>
-          </div>
-          <button
-            onClick={onClose}
-            className="text-slate-400 hover:text-white p-1 rounded-md transition-colors cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        {/* Modal Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
-          {error && (
-            <div className="p-3 text-xs bg-red-50 text-red-700 border border-red-200 rounded-lg">
-              {error}
-            </div>
-          )}
-
-          {/* Dynamically Render Form Fields in Configured Order */}
-          {(settings?.fields || [])
-            .filter(f => f.enabled)
-            .map(f => renderFieldItem(f))}
-
-          {/* Actions */}
-          <div className="flex items-center justify-end space-x-3 pt-4 border-t border-slate-200">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+              className="text-slate-400 hover:text-white p-1 rounded-md transition-colors cursor-pointer"
             >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="flex items-center space-x-2 px-5 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg shadow-sm transition-all cursor-pointer"
-            >
-              {isSubmitting ? (
-                <span>Creating...</span>
-              ) : (
-                <>
-                  <CheckCircle className="w-4 h-4" />
-                  <span>Create Deployment</span>
-                </>
-              )}
+              <X className="w-5 h-5" />
             </button>
           </div>
-        </form>
+
+          {/* Modal Form */}
+          <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+            {error && (
+              <div className="p-3 text-xs bg-red-50 text-red-700 border border-red-200 rounded-lg">
+                {error}
+              </div>
+            )}
+
+            {/* SECTION 1: Company & Location Hierarchy */}
+            <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-4">
+              <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center space-x-1.5">
+                <Building2 className="w-3.5 h-3.5 text-blue-600" />
+                <span>1. Organization & Location Hierarchy</span>
+              </div>
+
+              {/* Company Selector */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                    Company / Customer *
+                  </label>
+                  {!defaultCompanyId && (
+                    <button
+                      type="button"
+                      onClick={() => setIsInlineCompanyModalOpen(true)}
+                      className="text-[11px] font-semibold text-blue-600 hover:underline flex items-center space-x-0.5 cursor-pointer"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>New Company</span>
+                    </button>
+                  )}
+                </div>
+
+                {companies.length > 0 ? (
+                  <div className="relative">
+                    <Building2 className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+                    <select
+                      value={selectedCompanyId}
+                      onChange={handleCompanyChange}
+                      disabled={Boolean(defaultCompanyId)}
+                      className="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white disabled:bg-slate-100 font-medium"
+                      required
+                    >
+                      <option value="">-- Select Company --</option>
+                      {companies.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <Building2 className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+                    <input
+                      type="text"
+                      required
+                      value={customerName}
+                      onChange={(e) => setCustomerName(e.target.value)}
+                      placeholder="e.g. Acme Corporation"
+                      className="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-medium"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Location Selector */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                    Datacenter / Facility Location *
+                  </label>
+                  {selectedCompanyId && !defaultLocationId && (
+                    <button
+                      type="button"
+                      onClick={() => setIsInlineLocationModalOpen(true)}
+                      className="text-[11px] font-semibold text-emerald-600 hover:underline flex items-center space-x-0.5 cursor-pointer"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>New Location</span>
+                    </button>
+                  )}
+                </div>
+
+                {companyLocations.length > 0 ? (
+                  <div className="relative">
+                    <MapPin className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+                    <select
+                      value={selectedLocationId}
+                      onChange={handleLocationChange}
+                      disabled={Boolean(defaultLocationId)}
+                      className="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white disabled:bg-slate-100 font-medium"
+                      required
+                    >
+                      <option value="">-- Select Location --</option>
+                      {companyLocations.map((l) => (
+                        <option key={l.id} value={l.id}>
+                          {l.name} {l.city ? `(${l.city})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <MapPin className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+                    <input
+                      type="text"
+                      required
+                      value={location}
+                      onChange={(e) => setLocation(e.target.value)}
+                      placeholder={selectedCompanyId ? "No locations found - enter location name..." : "Select a company or enter location..."}
+                      className="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* SECTION 2: Deployed Product & Deployment Date */}
+            <div className="p-4 bg-indigo-50/60 border border-indigo-100 rounded-xl space-y-4">
+              <div className="text-[11px] font-bold text-indigo-900 uppercase tracking-wider flex items-center space-x-1.5">
+                <Package className="w-3.5 h-3.5 text-indigo-600" />
+                <span>2. Deployed Product & Timeline</span>
+              </div>
+
+              {/* Deployed Product */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                  Deployed Product *
+                </label>
+                <div className="relative">
+                  <Package className="w-4 h-4 absolute left-3 top-3 text-indigo-500" />
+                  <select
+                    value={deployedProduct}
+                    onChange={(e) => setDeployedProduct(e.target.value)}
+                    required
+                    className="w-full pl-9 pr-3 py-2 text-sm border border-indigo-200 rounded-lg focus:ring-2 focus:ring-indigo-500 bg-white font-medium text-slate-900"
+                  >
+                    <option value="">-- Select Product --</option>
+                    {productOptions.map((opt) => (
+                      <option key={opt} value={opt}>
+                        {opt}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {deployedProduct === 'Other' && (
+                  <div className="mt-2 animate-in fade-in duration-150">
+                    <input
+                      type="text"
+                      required
+                      value={otherValues['deployed_product'] || ''}
+                      onChange={(e) => setOtherValues(prev => ({ ...prev, deployed_product: e.target.value }))}
+                      placeholder="Specify custom product name or SKU..."
+                      className="w-full px-3 py-2 text-xs border border-indigo-300 rounded-lg focus:ring-2 focus:ring-indigo-500 bg-white text-slate-900"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Deployment Date */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                  Deployment Date *
+                </label>
+                <div className="relative">
+                  <Calendar className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+                  <input
+                    type="date"
+                    required
+                    value={deploymentDate}
+                    onChange={(e) => setDeploymentDate(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white font-medium text-slate-800"
+                  />
+                </div>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Date when the product was or will be deployed at this location.
+                </p>
+              </div>
+            </div>
+
+            {/* SECTION 3: Lifecycle, Status, Group & Notes */}
+            <div className="space-y-4 pt-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Deployment Type */}
+                {isFieldEnabled('deployment_type') && (
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                      Deployment Type {isFieldRequired('deployment_type') && '*'}
+                    </label>
+                    <div className="relative">
+                      <Tag className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+                      <select
+                        value={deploymentType}
+                        required={isFieldRequired('deployment_type')}
+                        onChange={e => setDeploymentType(e.target.value)}
+                        className="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
+                      >
+                        <option value="">-- Select Deployment Type --</option>
+                        {(getField('deployment_type')?.options || ['Deployment', 'POC', 'Pilot', 'Trial', 'Staging']).map(opt => (
+                          <option key={opt} value={opt}>
+                            {opt}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                )}
+
+                {/* Status */}
+                {isFieldEnabled('pre_poc_status') && (
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                      Status {isFieldRequired('pre_poc_status') && '*'}
+                    </label>
+                    <select
+                      value={status}
+                      required={isFieldRequired('pre_poc_status')}
+                      onChange={e => setStatus(e.target.value)}
+                      className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
+                    >
+                      <option value="">-- Select Status --</option>
+                      {(getField('pre_poc_status')?.options || ['Planning', 'Pre-POC', 'In Progress', 'Staging', 'Active', 'Completed']).map(opt => (
+                        <option key={opt} value={opt}>
+                          {opt}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+
+              {/* Internal Group */}
+              {isFieldEnabled('internal_group_name') && (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                    Internal Engineering Group {isFieldRequired('internal_group_name') && '*'}
+                  </label>
+                  <div className="relative">
+                    <Users className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+                    <select
+                      value={internalGroupName}
+                      required={isFieldRequired('internal_group_name')}
+                      onChange={e => setInternalGroupName(e.target.value)}
+                      className="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
+                    >
+                      <option value="">-- Select Internal Group --</option>
+                      {(getField('internal_group_name')?.options || ['Edge Infrastructure', 'Core Platform', 'Cloud Ops', 'Security Team']).map(opt => (
+                        <option key={opt} value={opt}>
+                          {opt}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              {/* Notes */}
+              {isFieldEnabled('notes') && (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                    Notes & Technical Specs
+                  </label>
+                  <div className="relative">
+                    <FileText className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+                    <textarea
+                      rows={3}
+                      value={notes}
+                      onChange={e => setNotes(e.target.value)}
+                      placeholder="Hardware specs, networking info, primary point of contact..."
+                      className="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Dynamically Render Any Custom Fields configured by Admin */}
+              {(settings?.fields || [])
+                .filter(f => !['customer_name', 'location', 'deployed_product', 'deployment_date', 'deployment_type', 'internal_group_name', 'pre_poc_status', 'notes'].includes(f.key) && f.enabled)
+                .map(f => (
+                  <div key={f.key}>
+                    <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                      {f.label} {f.required && '*'}
+                    </label>
+                    {f.type === 'select' ? (
+                      <select
+                        required={f.required}
+                        value={customValues[f.key] || ''}
+                        onChange={e => setCustomValues(prev => ({ ...prev, [f.key]: e.target.value }))}
+                        className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
+                      >
+                        <option value="">-- Select {f.label} --</option>
+                        {(f.options || []).map(opt => (
+                          <option key={opt} value={opt}>
+                            {opt}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        type="text"
+                        required={f.required}
+                        value={customValues[f.key] || ''}
+                        onChange={e => setCustomValues(prev => ({ ...prev, [f.key]: e.target.value }))}
+                        className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      />
+                    )}
+                  </div>
+                ))}
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center justify-end space-x-3 pt-4 border-t border-slate-200">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="flex items-center space-x-2 px-5 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg shadow-sm transition-all cursor-pointer"
+              >
+                {isSubmitting ? (
+                  <span>Creating...</span>
+                ) : (
+                  <>
+                    <CheckCircle className="w-4 h-4" />
+                    <span>Create Deployment Record</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
-    </div>
+
+      {/* Sub-modals for inline creation */}
+      <NewCompanyModal
+        isOpen={isInlineCompanyModalOpen}
+        onClose={() => setIsInlineCompanyModalOpen(false)}
+        onSuccess={(newComp) => {
+          setCompanies(prev => [...prev, newComp]);
+          setSelectedCompanyId(newComp.id);
+          setCustomerName(newComp.name);
+          loadLocationsForCompany(newComp.id);
+        }}
+      />
+
+      <NewLocationModal
+        isOpen={isInlineLocationModalOpen}
+        companyId={selectedCompanyId}
+        onClose={() => setIsInlineLocationModalOpen(false)}
+        onSuccess={(newLoc) => {
+          setCompanyLocations(prev => [...prev, newLoc]);
+          setSelectedLocationId(newLoc.id);
+          setLocation(newLoc.name);
+        }}
+      />
+    </>
   );
 };
 

@@ -7,7 +7,8 @@ import {
   User as UserIcon, 
   Shield, 
   Settings, 
-  ChevronDown 
+  ChevronDown,
+  Building2
 } from 'lucide-react';
 import { logout, getMe } from '../api';
 
@@ -55,6 +56,7 @@ export const Navbar = () => {
 
   const navItems = [
     { name: 'Dashboard', path: '/', icon: LayoutDashboard },
+    { name: 'Companies & Locations', path: '/companies', icon: Building2 },
     { name: 'Deployments', path: '/deployments', icon: Server },
   ];
 

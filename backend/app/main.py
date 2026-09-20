@@ -4,7 +4,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from app.core.config import settings as app_settings
-from app.api.endpoints import auth, deployments, credentials, settings as settings_router
+from app.api.endpoints import auth, deployments, credentials, settings as settings_router, companies, locations
 
 limiter = Limiter(key_func=get_remote_address)
 
@@ -21,6 +21,8 @@ app.add_middleware(
 )
 
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
+app.include_router(companies.router, prefix="/api/companies", tags=["companies"])
+app.include_router(locations.router, prefix="/api/locations", tags=["locations"])
 app.include_router(deployments.router, prefix="/api/deployments", tags=["deployments"])
 app.include_router(credentials.router, prefix="/api/credentials", tags=["credentials"])
 app.include_router(settings_router.router, prefix="/api/settings", tags=["settings"])
