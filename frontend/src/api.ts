@@ -77,9 +77,8 @@ export interface CompanyLocation {
   company_id: string;
   name: string;
   address?: string;
-  city?: string;
-  country?: string;
-  datacenter_tier?: string;
+  state?: string;
+  district?: string;
   notes?: string;
   deployments_count?: number;
   created_at: string;
@@ -111,6 +110,7 @@ export interface Company {
   contacts?: CompanyContact[];
   created_at: string;
   updated_at: string;
+  [key: string]: any;
 }
 
 export const getCompanies = async (search?: string): Promise<Company[]> => {
@@ -188,9 +188,8 @@ export const createCompanyLocation = async (
   location: {
     name: string;
     address?: string;
-    city?: string;
-    country?: string;
-    datacenter_tier?: string;
+    state?: string;
+    district?: string;
     notes?: string;
   }
 ): Promise<CompanyLocation> => {
@@ -432,7 +431,7 @@ export const getDeploymentCredentialLogs = async (id: string): Promise<Credentia
 export interface DeploymentFieldConfig {
   key: string;
   label: string;
-  type: 'text' | 'select' | 'textarea';
+  type: 'text' | 'select' | 'textarea' | 'date' | 'number';
   enabled: boolean;
   required: boolean;
   default_value: string;
@@ -462,6 +461,58 @@ export const updateDeploymentFieldSettings = async (
 
 export const resetDeploymentFieldSettings = async (): Promise<DeploymentFieldsSettings> => {
   const { data } = await api.post('/settings/deployment-fields/reset');
+  return data;
+};
+
+export interface CompanyFieldConfig {
+  key: string;
+  label: string;
+  type: 'text' | 'select' | 'textarea' | 'date' | 'number';
+  category?: 'profile' | 'location' | 'contact';
+  enabled: boolean;
+  required: boolean;
+  default_value: string;
+  options?: string[];
+  allow_other?: boolean;
+  other_placeholder?: string;
+  system_fixed?: boolean;
+  description?: string;
+}
+
+export interface CompanyFieldsSettings {
+  fields: CompanyFieldConfig[];
+  custom_fields?: CompanyFieldConfig[];
+}
+
+export const getCompanyFieldSettings = async (): Promise<CompanyFieldsSettings> => {
+  const { data } = await api.get('/settings/company-fields');
+  return data;
+};
+
+export const updateCompanyFieldSettings = async (
+  settings: CompanyFieldsSettings
+): Promise<CompanyFieldsSettings> => {
+  const { data } = await api.put('/settings/company-fields', settings);
+  return data;
+};
+
+export const resetCompanyFieldSettings = async (): Promise<CompanyFieldsSettings> => {
+  const { data } = await api.post('/settings/company-fields/reset');
+  return data;
+};
+
+export interface StateDistrictItem {
+  state: string;
+  districts: string[];
+}
+
+export const getStatesDistricts = async (): Promise<StateDistrictItem[]> => {
+  const { data } = await api.get('/settings/states-districts');
+  return data;
+};
+
+export const updateStatesDistricts = async (statesDistricts: StateDistrictItem[]): Promise<StateDistrictItem[]> => {
+  const { data } = await api.put('/settings/states-districts', statesDistricts);
   return data;
 };
 

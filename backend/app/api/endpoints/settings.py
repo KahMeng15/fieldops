@@ -118,6 +118,26 @@ DEFAULT_DEPLOYMENT_SETTINGS: Dict[str, Any] = {
             "description": "Secondary or assisting field engineers on site or remote"
         },
         {
+            "key": "deployment_date",
+            "label": "Deployment Date",
+            "type": "date",
+            "enabled": True,
+            "required": False,
+            "default_value": "",
+            "system_fixed": False,
+            "description": "Scheduled or initiated installation date"
+        },
+        {
+            "key": "deployment_folder",
+            "label": "Deployment Folder",
+            "type": "text",
+            "enabled": True,
+            "required": False,
+            "default_value": "",
+            "system_fixed": False,
+            "description": "OneDrive or cloud documentation directory URL"
+        },
+        {
             "key": "notes",
             "label": "Notes & Technical Specs",
             "type": "textarea",
@@ -131,9 +151,212 @@ DEFAULT_DEPLOYMENT_SETTINGS: Dict[str, Any] = {
     "custom_fields": []
 }
 
+DEFAULT_COMPANY_SETTINGS: Dict[str, Any] = {
+    "fields": [
+        # Company Profile
+        {
+            "key": "name",
+            "label": "Company Name",
+            "type": "text",
+            "category": "profile",
+            "enabled": True,
+            "required": True,
+            "default_value": "",
+            "system_fixed": True,
+            "description": "Primary registered organization or client name"
+        },
+        {
+            "key": "description",
+            "label": "Company Description",
+            "type": "textarea",
+            "category": "profile",
+            "enabled": True,
+            "required": False,
+            "default_value": "",
+            "system_fixed": False,
+            "description": "General overview of the client business, operations, or industry"
+        },
+        {
+            "key": "website",
+            "label": "Website URL",
+            "type": "text",
+            "category": "profile",
+            "enabled": True,
+            "required": False,
+            "default_value": "",
+            "system_fixed": False,
+            "description": "Official corporate website link (e.g. https://example.com)"
+        },
+        {
+            "key": "contact_email",
+            "label": "Contact Email",
+            "type": "text",
+            "category": "profile",
+            "enabled": True,
+            "required": False,
+            "default_value": "",
+            "system_fixed": False,
+            "description": "Primary corporate or general communication email"
+        },
+        {
+            "key": "contact_phone",
+            "label": "Contact Phone",
+            "type": "text",
+            "category": "profile",
+            "enabled": True,
+            "required": False,
+            "default_value": "",
+            "system_fixed": False,
+            "description": "Corporate switchboard or primary office phone"
+        },
+        # Company Location
+        {
+            "key": "location_name",
+            "label": "Location / Site Name",
+            "type": "text",
+            "category": "location",
+            "enabled": True,
+            "required": True,
+            "default_value": "",
+            "system_fixed": True,
+            "description": "Datacenter, office campus, or facility name"
+        },
+        {
+            "key": "address",
+            "label": "Street Address",
+            "type": "textarea",
+            "category": "location",
+            "enabled": True,
+            "required": False,
+            "default_value": "",
+            "system_fixed": False,
+            "description": "Physical street address of the datacenter or building"
+        },
+        {
+            "key": "district",
+            "label": "City / District",
+            "type": "select",
+            "category": "location",
+            "enabled": True,
+            "required": False,
+            "default_value": "",
+            "options": [],
+            "allow_other": False,
+            "system_fixed": False,
+            "description": "City or district"
+        },
+        {
+            "key": "state",
+            "label": "State",
+            "type": "select",
+            "category": "location",
+            "enabled": True,
+            "required": False,
+            "default_value": "",
+            "options": [],
+            "allow_other": False,
+            "system_fixed": False,
+            "description": "Malaysian state"
+        },
+
+        {
+            "key": "location_notes",
+            "label": "Location Notes",
+            "type": "textarea",
+            "category": "location",
+            "enabled": True,
+            "required": False,
+            "default_value": "",
+            "system_fixed": False,
+            "description": "Access protocols, security badge info, loading dock, power specs"
+        },
+        # Company Contact
+        {
+            "key": "contact_name",
+            "label": "Contact Person Name",
+            "type": "text",
+            "category": "contact",
+            "enabled": True,
+            "required": True,
+            "default_value": "",
+            "system_fixed": True,
+            "description": "Full name of the company representative"
+        },
+        {
+            "key": "position",
+            "label": "Job Title / Position",
+            "type": "text",
+            "category": "contact",
+            "enabled": True,
+            "required": False,
+            "default_value": "",
+            "system_fixed": False,
+            "description": "Job title or departmental role (e.g. IT Director, SecOps Lead)"
+        },
+        {
+            "key": "contact_person_email",
+            "label": "Direct Email",
+            "type": "text",
+            "category": "contact",
+            "enabled": True,
+            "required": False,
+            "default_value": "",
+            "system_fixed": False,
+            "description": "Direct individual email address"
+        },
+        {
+            "key": "contact_person_phone",
+            "label": "Direct Phone / Mobile",
+            "type": "text",
+            "category": "contact",
+            "enabled": True,
+            "required": False,
+            "default_value": "",
+            "system_fixed": False,
+            "description": "Direct phone extension or mobile number"
+        },
+        {
+            "key": "contact_notes",
+            "label": "Contact Notes",
+            "type": "textarea",
+            "category": "contact",
+            "enabled": True,
+            "required": False,
+            "default_value": "",
+            "system_fixed": False,
+            "description": "Availability, timezone, escalation role"
+        }
+    ],
+    "custom_fields": []
+}
+
 import re
 from sqlalchemy import text, Column, String
-from app.models import Deployment
+from app.models import Deployment, Company
+
+def sync_company_database_columns(db: Session, settings_data: Dict[str, Any]):
+    """Ensure every profile field key in settings exists as a column in PostgreSQL table companies."""
+    try:
+        existing_cols_res = db.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name = 'companies'"))
+        existing_cols = {row[0] for row in existing_cols_res}
+    except Exception:
+        existing_cols = set()
+
+    fields = settings_data.get("fields", [])
+    for field in fields:
+        if field.get("category") == "profile" or not field.get("category"):
+            col_name = field.get("key", "").strip()
+            if col_name and re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', col_name):
+                if col_name not in existing_cols:
+                    try:
+                        db.execute(text(f'ALTER TABLE companies ADD COLUMN IF NOT EXISTS "{col_name}" VARCHAR;'))
+                        db.commit()
+                        existing_cols.add(col_name)
+                    except Exception as e:
+                        db.rollback()
+                        print(f"Failed to ensure column {col_name} on companies: {e}")
+                if not hasattr(Company, col_name):
+                    setattr(Company, col_name, Column(String))
 
 def sync_database_columns(db: Session, settings_data: Dict[str, Any]):
     """Ensure every field key in settings exists as an actual column in PostgreSQL table deployments and on SQLAlchemy model."""
@@ -290,3 +513,168 @@ async def reset_deployment_field_settings(
     sync_lookup_values(db, DEFAULT_DEPLOYMENT_SETTINGS)
     sync_database_columns(db, DEFAULT_DEPLOYMENT_SETTINGS)
     return DEFAULT_DEPLOYMENT_SETTINGS
+
+@router.get("/company-fields")
+async def get_company_field_settings(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    setting_cat = db.query(LookupCategory).filter_by(name="company_field_settings").first()
+    if not setting_cat or not setting_cat.description:
+        # First time, seed default company settings
+        setting_cat = LookupCategory(
+            name="company_field_settings",
+            description=json.dumps(DEFAULT_COMPANY_SETTINGS)
+        )
+        db.add(setting_cat)
+        db.commit()
+        sync_lookup_values(db, DEFAULT_COMPANY_SETTINGS)
+        sync_company_database_columns(db, DEFAULT_COMPANY_SETTINGS)
+        return DEFAULT_COMPANY_SETTINGS
+
+    try:
+        data = json.loads(setting_cat.description)
+        existing_keys = {f.get("key") for f in data.get("fields", [])}
+        missing_defaults = [f for f in DEFAULT_COMPANY_SETTINGS.get("fields", []) if f.get("key") not in existing_keys]
+        if missing_defaults:
+            data["fields"].extend(missing_defaults)
+            setting_cat.description = json.dumps(data)
+            db.commit()
+            sync_company_database_columns(db, data)
+        return data
+    except Exception:
+        return DEFAULT_COMPANY_SETTINGS
+
+@router.put("/company-fields")
+async def update_company_field_settings(
+    request: Request,
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    user_role_name = current_user.role.name if current_user.role else ""
+    user_perms = current_user.role.permissions if current_user.role else []
+    if user_role_name != "admin" and not any(p in user_perms for p in ["manage_settings", "create_deployment"]):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to modify admin settings."
+        )
+
+    if "fields" not in payload or not isinstance(payload["fields"], list):
+        raise HTTPException(status_code=400, detail="Invalid payload: 'fields' list required.")
+
+    setting_cat = db.query(LookupCategory).filter_by(name="company_field_settings").first()
+    old_value = json.loads(setting_cat.description) if setting_cat and setting_cat.description else None
+
+    if not setting_cat:
+        setting_cat = LookupCategory(
+            name="company_field_settings",
+            description=json.dumps(payload)
+        )
+        db.add(setting_cat)
+    else:
+        setting_cat.description = json.dumps(payload)
+
+    db.commit()
+    db.refresh(setting_cat)
+
+    sync_lookup_values(db, payload)
+    sync_company_database_columns(db, payload)
+
+    audit = AuditLog(
+        user_id=current_user.id,
+        action="update_company_field_settings",
+        resource_type="settings",
+        resource_id=setting_cat.id,
+        old_value=old_value,
+        new_value=payload,
+        ip_address=request.client.host if request.client else "127.0.0.1",
+        notes=f"Updated company fields configuration by {current_user.username}"
+    )
+    db.add(audit)
+    db.commit()
+
+    return payload
+
+@router.post("/company-fields/reset")
+async def reset_company_field_settings(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    user_role_name = current_user.role.name if current_user.role else ""
+    if user_role_name != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can reset settings.")
+
+    setting_cat = db.query(LookupCategory).filter_by(name="company_field_settings").first()
+    if setting_cat:
+        setting_cat.description = json.dumps(DEFAULT_COMPANY_SETTINGS)
+        db.commit()
+
+    sync_lookup_values(db, DEFAULT_COMPANY_SETTINGS)
+    sync_company_database_columns(db, DEFAULT_COMPANY_SETTINGS)
+    return DEFAULT_COMPANY_SETTINGS
+
+DEFAULT_REGION_SETTINGS = [
+    {"state": "Johor", "districts": ["Johor Bahru", "Batu Pahat", "Kluang"]},
+    {"state": "Kedah", "districts": ["Alor Setar", "Sungai Petani", "Kulim"]},
+    {"state": "Kelantan", "districts": ["Kota Bharu", "Pasir Mas", "Tanah Merah"]},
+    {"state": "Kuala Lumpur", "districts": ["Kuala Lumpur", "Cheras", "Kepong"]},
+    {"state": "Melaka", "districts": ["Melaka City", "Alor Gajah", "Jasin"]},
+    {"state": "Negeri Sembilan", "districts": ["Seremban", "Port Dickson", "Nilai"]},
+    {"state": "Pahang", "districts": ["Kuantan", "Temerloh", "Bentong"]},
+    {"state": "Penang", "districts": ["George Town", "Butterworth", "Bayan Lepas"]},
+    {"state": "Perak", "districts": ["Ipoh", "Taiping", "Teluk Intan"]},
+    {"state": "Perlis", "districts": ["Kangar", "Arau"]},
+    {"state": "Putrajaya", "districts": ["Putrajaya"]},
+    {"state": "Sabah", "districts": ["Kota Kinabalu", "Sandakan", "Tawau"]},
+    {"state": "Sarawak", "districts": ["Kuching", "Miri", "Sibu"]},
+    {"state": "Selangor", "districts": ["Shah Alam", "Petaling Jaya", "Subang Jaya", "Klang"]},
+    {"state": "Terengganu", "districts": ["Kuala Terengganu", "Kemaman", "Dungun"]}
+]
+
+@router.get("/states-districts")
+async def get_region_settings(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    setting_cat = db.query(LookupCategory).filter_by(name="region_settings").first()
+    if not setting_cat or not setting_cat.description:
+        setting_cat = LookupCategory(
+            name="region_settings",
+            description=json.dumps(DEFAULT_REGION_SETTINGS)
+        )
+        db.add(setting_cat)
+        db.commit()
+        return DEFAULT_REGION_SETTINGS
+    try:
+        return json.loads(setting_cat.description)
+    except Exception:
+        return DEFAULT_REGION_SETTINGS
+
+@router.put("/states-districts")
+async def update_region_settings(
+    request: Request,
+    payload: List[Dict[str, Any]],
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    user_role_name = current_user.role.name if current_user.role else ""
+    if user_role_name != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only admins can modify region settings."
+        )
+
+    setting_cat = db.query(LookupCategory).filter_by(name="region_settings").first()
+    if not setting_cat:
+        setting_cat = LookupCategory(
+            name="region_settings",
+            description=json.dumps(payload)
+        )
+        db.add(setting_cat)
+    else:
+        setting_cat.description = json.dumps(payload)
+
+    db.commit()
+    return payload

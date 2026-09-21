@@ -1,0 +1,14 @@
+[
+  {
+    "state": "Kuala Lumpur",
+    "districts": ["Bukit Bintang", "Titiwangsa", "Setiawangsa", "Wangsa Maju", "Batu", "Kepong", "Segambut", "Lembah Pantai", "Seputeh", "Bandar Tun Razak", "Cheras"]
+  },
+  {
+    "state": "Selangor",
+    "districts": ["Gombak", "Hulu Langat", "Hulu Selangor", "Klang", "Kuala Langat", "Kuala Selangor", "Petaling", "Sabak Bernam", "Sepang"]
+  },
+  {
+    "state": "Johor",
+    "districts": ["Batu Pahat", "Johor Bahru", "Kluang", "Kota Tinggi", "Kulai", "Mersing", "Muar", "Pontian", "Segamat", "Tangkak"]
+  }
+]

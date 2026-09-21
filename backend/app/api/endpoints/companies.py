@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, text, Column, String
 from app.db.base import get_db
 from app.models import Company, Location, Deployment, AuditLog, User, CompanyContact
 from app.schemas import (
@@ -20,6 +20,17 @@ from uuid import UUID
 
 router = APIRouter()
 
+def sync_company_orm_columns(db: Session) -> set:
+    try:
+        cols_res = db.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name = 'companies'"))
+        actual_cols = {row[0] for row in cols_res}
+        for col in actual_cols:
+            if not hasattr(Company, col):
+                setattr(Company, col, Column(String))
+        return actual_cols
+    except Exception:
+        return set()
+
 @router.get("", response_model=List[CompanyResponse])
 @router.get("/", response_model=List[CompanyResponse])
 async def list_companies(
@@ -27,6 +38,7 @@ async def list_companies(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    actual_cols = sync_company_orm_columns(db)
     query = db.query(Company).filter(Company.deleted_at == None)
     if search:
         query = query.filter(Company.name.ilike(f"%{search}%"))
@@ -55,6 +67,9 @@ async def list_companies(
             "created_at": c.created_at,
             "updated_at": c.updated_at
         }
+        for col in actual_cols:
+            if col not in c_dict and hasattr(c, col):
+                c_dict[col] = getattr(c, col)
         results.append(CompanyResponse(**c_dict))
     return results
 
@@ -66,6 +81,7 @@ async def create_company(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(["create_deployment"]))
 ):
+    actual_cols = sync_company_orm_columns(db)
     existing = db.query(Company).filter(
         func.lower(Company.name) == data.name.strip().lower(),
         Company.deleted_at == None
@@ -73,6 +89,7 @@ async def create_company(
     if existing:
         raise HTTPException(status_code=400, detail=f"Company with name '{data.name}' already exists.")
     
+    data_dict = data.dict(exclude_unset=True)
     company = Company(
         name=data.name.strip(),
         description=data.description,
@@ -80,6 +97,10 @@ async def create_company(
         contact_email=data.contact_email,
         contact_phone=data.contact_phone
     )
+    for k, v in data_dict.items():
+        if k in actual_cols and k not in ["id", "created_at", "updated_at", "deleted_at"]:
+            setattr(company, k, v)
+
     db.add(company)
     db.commit()
     db.refresh(company)
@@ -95,18 +116,23 @@ async def create_company(
     db.add(audit_log)
     db.commit()
 
-    return CompanyResponse(
-        id=company.id,
-        name=company.name,
-        description=company.description,
-        website=company.website,
-        contact_email=company.contact_email,
-        contact_phone=company.contact_phone,
-        locations_count=0,
-        deployments_count=0,
-        created_at=company.created_at,
-        updated_at=company.updated_at
-    )
+    resp_dict = {
+        "id": company.id,
+        "name": company.name,
+        "description": company.description,
+        "website": company.website,
+        "contact_email": company.contact_email,
+        "contact_phone": company.contact_phone,
+        "locations_count": 0,
+        "deployments_count": 0,
+        "created_at": company.created_at,
+        "updated_at": company.updated_at
+    }
+    for col in actual_cols:
+        if col not in resp_dict and hasattr(company, col):
+            resp_dict[col] = getattr(company, col)
+
+    return CompanyResponse(**resp_dict)
 
 @router.get("/{id}", response_model=CompanyResponse)
 async def get_company(
@@ -114,6 +140,7 @@ async def get_company(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    actual_cols = sync_company_orm_columns(db)
     company = db.query(Company).filter(Company.id == id, Company.deleted_at == None).first()
     if not company:
         raise HTTPException(404, "Company not found")
@@ -154,20 +181,25 @@ async def get_company(
         CompanyContact.deleted_at == None
     ).order_by(CompanyContact.created_at.asc()).all()
 
-    return CompanyResponse(
-        id=company.id,
-        name=company.name,
-        description=company.description,
-        website=company.website,
-        contact_email=company.contact_email,
-        contact_phone=company.contact_phone,
-        locations_count=len(loc_responses),
-        deployments_count=dep_count_total,
-        locations=loc_responses,
-        contacts=contacts,
-        created_at=company.created_at,
-        updated_at=company.updated_at
-    )
+    comp_dict = {
+        "id": company.id,
+        "name": company.name,
+        "description": company.description,
+        "website": company.website,
+        "contact_email": company.contact_email,
+        "contact_phone": company.contact_phone,
+        "locations_count": len(loc_responses),
+        "deployments_count": dep_count_total,
+        "locations": loc_responses,
+        "contacts": contacts,
+        "created_at": company.created_at,
+        "updated_at": company.updated_at
+    }
+    for col in actual_cols:
+        if col not in comp_dict and hasattr(company, col):
+            comp_dict[col] = getattr(company, col)
+
+    return CompanyResponse(**comp_dict)
 
 @router.patch("/{id}", response_model=CompanyResponse)
 async def update_company(
@@ -176,10 +208,12 @@ async def update_company(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(["create_deployment"]))
 ):
+    actual_cols = sync_company_orm_columns(db)
     company = db.query(Company).filter(Company.id == id, Company.deleted_at == None).first()
     if not company:
         raise HTTPException(404, "Company not found")
     
+    data_dict = data.dict(exclude_unset=True)
     if data.name:
         company.name = data.name.strip()
     if data.description is not None:
@@ -191,6 +225,10 @@ async def update_company(
     if data.contact_phone is not None:
         company.contact_phone = data.contact_phone
 
+    for k, v in data_dict.items():
+        if k in actual_cols and k not in ["id", "created_at", "updated_at", "deleted_at"]:
+            setattr(company, k, v)
+
     db.commit()
     db.refresh(company)
 
@@ -200,16 +238,21 @@ async def update_company(
     )
     db.commit()
 
-    return CompanyResponse(
-        id=company.id,
-        name=company.name,
-        description=company.description,
-        website=company.website,
-        contact_email=company.contact_email,
-        contact_phone=company.contact_phone,
-        created_at=company.created_at,
-        updated_at=company.updated_at
-    )
+    resp_dict = {
+        "id": company.id,
+        "name": company.name,
+        "description": company.description,
+        "website": company.website,
+        "contact_email": company.contact_email,
+        "contact_phone": company.contact_phone,
+        "created_at": company.created_at,
+        "updated_at": company.updated_at
+    }
+    for col in actual_cols:
+        if col not in resp_dict and hasattr(company, col):
+            resp_dict[col] = getattr(company, col)
+
+    return CompanyResponse(**resp_dict)
 
 @router.delete("/{id}", status_code=204)
 async def delete_company(

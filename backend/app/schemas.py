@@ -34,9 +34,8 @@ class Token(BaseModel):
 class LocationBase(BaseModel):
     name: str
     address: Optional[str] = None
-    city: Optional[str] = None
-    country: Optional[str] = None
-    datacenter_tier: Optional[str] = None
+    district: Optional[str] = None
+    state: Optional[str] = None
     notes: Optional[str] = None
 
 class LocationCreate(LocationBase):
@@ -85,8 +84,12 @@ class CompanyBase(BaseModel):
     contact_email: Optional[str] = None
     contact_phone: Optional[str] = None
 
+    class Config:
+        extra = "allow"
+
 class CompanyCreate(CompanyBase):
-    pass
+    class Config:
+        extra = "allow"
 
 class CompanyResponse(CompanyBase):
     id: UUID
@@ -99,6 +102,7 @@ class CompanyResponse(CompanyBase):
 
     class Config:
         from_attributes = True
+        extra = "allow"
 
 class DeploymentSchema(BaseModel):
     customer_name: Optional[str] = None

@@ -444,7 +444,7 @@ export const NewDeploymentModal: React.FC<NewDeploymentModalProps> = ({
                       <option value="">-- Select Location --</option>
                       {companyLocations.map((l) => (
                         <option key={l.id} value={l.id}>
-                          {l.name} {l.city ? `(${l.city})` : ''}
+                          {l.name} {l.district ? `(${l.district})` : ''}
                         </option>
                       ))}
                     </select>

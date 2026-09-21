@@ -26,10 +26,12 @@ import {
   deleteLocation,
   getLocationDeployments, 
   deleteCompanyContact,
+  getCompanyFieldSettings,
   type Company, 
   type CompanyLocation, 
   type CompanyContact,
-  type DeploymentData 
+  type DeploymentData,
+  type CompanyFieldsSettings
 } from '../api';
 import NewLocationModal from '../components/NewLocationModal';
 import EditLocationModal from '../components/EditLocationModal';
@@ -42,6 +44,7 @@ export const CompanyDetailPage: React.FC = () => {
   const navigate = useNavigate();
 
   const [company, setCompany] = useState<Company | null>(null);
+  const [companySettings, setCompanySettings] = useState<CompanyFieldsSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -64,8 +67,14 @@ export const CompanyDetailPage: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
-      const comp = await getCompany(id);
+      const [comp, settings] = await Promise.all([
+        getCompany(id),
+        getCompanyFieldSettings().catch(() => null)
+      ]);
       setCompany(comp);
+      if (settings) {
+        setCompanySettings(settings);
+      }
 
       // Fetch deployment records for each location
       if (comp.locations && comp.locations.length > 0) {
@@ -306,17 +315,62 @@ export const CompanyDetailPage: React.FC = () => {
         </div>
 
         {/* Website & Profile info bar */}
-        {company.website && (
-          <div className="flex flex-wrap items-center gap-4 pt-4 border-t border-slate-100 text-xs text-slate-600">
-            <a
-              href={company.website.startsWith('http') ? company.website : `https://${company.website}`}
-              target="_blank"
-              rel="noreferrer"
-              className="flex items-center space-x-1.5 text-blue-600 hover:underline"
-            >
-              <Globe className="w-4 h-4 text-slate-400" />
-              <span>{company.website.replace(/^https?:\/\//, '')}</span>
-            </a>
+        {Boolean(
+          company.website ||
+          company.contact_email ||
+          company.contact_phone ||
+          (companySettings?.fields && companySettings.fields.some(f => f.enabled && f.category === 'profile' && !['name', 'description', 'website', 'contact_email', 'contact_phone'].includes(f.key) && company[f.key] !== undefined && company[f.key] !== null && company[f.key] !== ''))
+        ) && (
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2.5 pt-4 border-t border-slate-100 text-xs text-slate-600">
+            {company.website && (
+              <a
+                href={company.website.startsWith('http') ? company.website : `https://${company.website}`}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center space-x-1.5 text-blue-600 hover:underline"
+              >
+                <Globe className="w-4 h-4 text-slate-400" />
+                <span>{company.website.replace(/^https?:\/\//, '')}</span>
+              </a>
+            )}
+
+            {company.contact_email && (
+              <a
+                href={`mailto:${company.contact_email}`}
+                className="flex items-center space-x-1.5 text-slate-600 hover:text-blue-600"
+              >
+                <Mail className="w-4 h-4 text-slate-400" />
+                <span>{company.contact_email}</span>
+              </a>
+            )}
+
+            {company.contact_phone && (
+              <a
+                href={`tel:${company.contact_phone}`}
+                className="flex items-center space-x-1.5 text-slate-600 hover:text-blue-600"
+              >
+                <Phone className="w-4 h-4 text-slate-400" />
+                <span>{company.contact_phone}</span>
+              </a>
+            )}
+
+            {companySettings?.fields
+              ?.filter(
+                f =>
+                  f.enabled &&
+                  f.category === 'profile' &&
+                  !['name', 'description', 'website', 'contact_email', 'contact_phone'].includes(f.key) &&
+                  company[f.key] !== undefined &&
+                  company[f.key] !== null &&
+                  company[f.key] !== ''
+              )
+              .map(f => (
+                <div key={f.key} className="flex items-center space-x-1.5 bg-slate-50 px-2.5 py-1 rounded-md border border-slate-200">
+                  <Tag className="w-3.5 h-3.5 text-slate-400" />
+                  <span className="font-medium text-slate-500">{f.label}:</span>
+                  <span className="font-semibold text-slate-800">{String(company[f.key])}</span>
+                </div>
+              ))}
           </div>
         )}
       </div>
@@ -550,15 +604,15 @@ export const CompanyDetailPage: React.FC = () => {
                             {loc.name}
                           </span>
 
-                          {loc.datacenter_tier && (
+                          {loc.state && (
                             <span className="text-[10px] font-semibold px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded">
-                              {loc.datacenter_tier}
+                              {loc.state}
                             </span>
                           )}
-                          {(loc.city || loc.country) && (
+                          {(loc.district || loc.state) && (
                             <span className="text-xs text-slate-500 flex items-center space-x-1">
                               <span>•</span>
-                              <span>{[loc.city, loc.country].filter(Boolean).join(', ')}</span>
+                              <span>{[loc.district, loc.state].filter(Boolean).join(', ')}</span>
                             </span>
                           )}
                         </div>
