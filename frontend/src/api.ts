@@ -5,18 +5,17 @@ const api = axios.create({
   baseURL: '/api',
 });
 
-api.interceptors.request.use(async config => {
+api.interceptors.request.use(config => {
   const token = localStorage.getItem('access_token');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
-  const extIp = getExternalIpSync() || (await Promise.race([
-    fetchExternalIp(),
-    new Promise<string>(r => setTimeout(() => r(''), 150))
-  ]));
+  const extIp = getExternalIpSync();
   if (extIp) {
     config.headers['X-Client-External-IP'] = extIp;
     config.headers['X-Real-IP'] = extIp;
+  } else {
+    fetchExternalIp().catch(() => {});
   }
   return config;
 });
@@ -514,6 +513,41 @@ export const getStatesDistricts = async (): Promise<StateDistrictItem[]> => {
 export const updateStatesDistricts = async (statesDistricts: StateDistrictItem[]): Promise<StateDistrictItem[]> => {
   const { data } = await api.put('/settings/states-districts', statesDistricts);
   return data;
+};
+
+export interface ExtraItem {
+  id: string;
+  deployment_id: string;
+  item_name: string;
+  quantity: number;
+  notes?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ExtraItemCreate {
+  item_name: string;
+  quantity: number;
+  notes?: string;
+}
+
+export const getDeploymentExtraItems = async (deploymentId: string): Promise<ExtraItem[]> => {
+  const { data } = await api.get(`/deployments/${deploymentId}/extra-items`);
+  return data;
+};
+
+export const createDeploymentExtraItem = async (deploymentId: string, itemData: ExtraItemCreate): Promise<ExtraItem> => {
+  const { data } = await api.post(`/deployments/${deploymentId}/extra-items`, itemData);
+  return data;
+};
+
+export const updateDeploymentExtraItem = async (deploymentId: string, itemId: string, itemData: ExtraItemCreate): Promise<ExtraItem> => {
+  const { data } = await api.put(`/deployments/${deploymentId}/extra-items/${itemId}`, itemData);
+  return data;
+};
+
+export const deleteDeploymentExtraItem = async (deploymentId: string, itemId: string): Promise<void> => {
+  await api.delete(`/deployments/${deploymentId}/extra-items/${itemId}`);
 };
 
 export default api;

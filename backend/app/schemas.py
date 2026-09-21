@@ -218,3 +218,20 @@ class PhaseRemarkResponse(BaseModel):
     class Config:
         from_attributes = True
 
+class ExtraItemBase(BaseModel):
+    item_name: str
+    quantity: int = 1
+    notes: Optional[str] = None
+
+class ExtraItemCreate(ExtraItemBase):
+    pass
+
+class ExtraItemResponse(ExtraItemBase):
+    id: UUID
+    deployment_id: UUID
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+

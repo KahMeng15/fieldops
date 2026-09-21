@@ -9,6 +9,7 @@ interface SearchableSelectProps {
   multiple?: boolean;
   placeholder?: string;
   disabled?: boolean;
+  onOutsideClick?: () => void;
 }
 
 export const SearchableSelect: React.FC<SearchableSelectProps> = ({
@@ -19,9 +20,11 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
   multiple = false,
   placeholder = 'Select...',
   disabled = false,
+  onOutsideClick,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const [displayValue, setDisplayValue] = useState<string>('');
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -29,20 +32,35 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
   const selectedString = multiple ? '' : (typeof value === 'string' ? value : '');
 
   useEffect(() => {
+    if (!multiple) {
+      setDisplayValue(selectedString);
+      setQuery('');
+    }
+  }, [selectedString, multiple]);
+
+  useEffect(() => {
     const handleOutsideClick = (e: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setIsOpen(false);
-        setQuery('');
+        if (!multiple) {
+          setQuery('');
+        }
+        if (onOutsideClick) {
+          onOutsideClick();
+        }
       }
     };
     document.addEventListener('mousedown', handleOutsideClick);
     return () => document.removeEventListener('mousedown', handleOutsideClick);
-  }, []);
+  }, [multiple, onOutsideClick]);
 
-  const filteredOptions = options.filter(opt =>
-    opt.toLowerCase().includes(query.toLowerCase()) &&
-    (multiple ? !selectedArray.includes(opt) : true)
-  );
+  const searchQuery = query.trim().toLowerCase();
+  const filteredOptions = options.filter(opt => {
+    if (multiple) {
+      return !selectedArray.includes(opt) && (searchQuery === '' || opt.toLowerCase().includes(searchQuery));
+    }
+    return searchQuery === '' || opt.toLowerCase().includes(searchQuery);
+  });
 
   const isExactMatch = options.some(opt => opt.toLowerCase() === query.trim().toLowerCase());
   const canAddOther = allowOther && query.trim() !== '' && !isExactMatch && (multiple ? !selectedArray.includes(query.trim()) : selectedString !== query.trim());
@@ -54,11 +72,12 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
       }
       setQuery('');
     } else {
-      onChange(opt);
+      setDisplayValue(opt);
       setQuery('');
+      onChange(opt);
       setIsOpen(false);
     }
-    inputRef.current?.focus();
+    inputRef.current?.blur();
   };
 
   const handleRemove = (optToRemove: string, e: React.MouseEvent) => {
@@ -80,6 +99,8 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
     }
   };
 
+  const inputValue = multiple ? query : (isOpen && query ? query : displayValue);
+
   return (
     <div className="relative" ref={containerRef}>
       <div 
@@ -87,9 +108,12 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
           if (!disabled) {
             setIsOpen(true);
             inputRef.current?.focus();
+            if (!multiple && inputRef.current) {
+              inputRef.current.select();
+            }
           }
         }}
-        className={`flex items-center min-h-[40px] flex-wrap gap-1.5 px-3 py-1.5 border border-slate-300 rounded-lg bg-white ${disabled ? 'bg-slate-100 opacity-80 cursor-not-allowed' : 'cursor-text focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500'}`}
+        className={`flex items-center min-h-[38px] flex-wrap gap-1.5 px-3 py-1.5 border border-slate-300 rounded-lg bg-white ${disabled ? 'bg-slate-100 opacity-80 cursor-not-allowed' : 'cursor-text focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500'}`}
       >
         {multiple && selectedArray.map(opt => (
           <span key={opt} className="flex items-center space-x-1 bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md text-xs font-medium border border-slate-200">
@@ -109,21 +133,22 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
           ref={inputRef}
           type="text"
           disabled={disabled}
-          value={isOpen ? query : (!multiple ? selectedString : '')}
+          value={inputValue}
           onChange={(e) => {
             setQuery(e.target.value);
             if (!isOpen) setIsOpen(true);
-            if (!multiple && !isOpen) onChange(''); // clear on new type
           }}
           onKeyDown={handleKeyDown}
           onFocus={() => {
             if (!disabled) {
               setIsOpen(true);
-              if (!multiple) setQuery('');
+              if (!multiple && inputRef.current) {
+                inputRef.current.select();
+              }
             }
           }}
           placeholder={multiple ? (selectedArray.length === 0 ? placeholder : '') : placeholder}
-          className="flex-1 bg-transparent min-w-[50px] outline-none text-sm text-slate-800 placeholder:text-slate-400"
+          className="flex-1 bg-transparent min-w-[50px] outline-none text-sm text-slate-800 placeholder:text-slate-400 font-medium"
         />
         <div className="shrink-0 text-slate-400">
           <ChevronDown className="w-4 h-4" />
@@ -139,9 +164,12 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
             <div
               key={opt}
               onClick={() => handleSelect(opt)}
-              className="px-3 py-2 text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-700 cursor-pointer transition-colors"
+              className="px-3 py-2 text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-700 cursor-pointer transition-colors font-medium flex items-center justify-between"
             >
-              {opt}
+              <span>{opt}</span>
+              {!multiple && opt === displayValue && (
+                <span className="text-xs text-blue-600 font-bold">✓</span>
+              )}
             </div>
           ))}
           {canAddOther && (

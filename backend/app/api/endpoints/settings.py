@@ -132,6 +132,30 @@ DEFAULT_DEPLOYMENT_SETTINGS: Dict[str, Any] = {
             "description": "Scheduled or initiated installation date"
         },
         {
+            "key": "extra_item_options",
+            "label": "Extra Items / Hardware Accessories",
+            "type": "select",
+            "enabled": True,
+            "required": False,
+            "default_value": "",
+            "options": [
+                "10G SFP+ SR Transceiver Module",
+                "10G SFP+ LR Transceiver Module",
+                "1G SFP RJ45 Copper Transceiver Module",
+                "DAC 10G Passive Direct Attach Cable (1m)",
+                "DAC 10G Passive Direct Attach Cable (3m)",
+                "Fiber Patch Cord LC-LC Duplex OM4 (5m)",
+                "Cat6A Shielded Ethernet Cable (3m)",
+                "Cat6A Shielded Ethernet Cable (10m)",
+                "Rack Mount Rail Kit 1U",
+                "Dual AC Power Supply Module 550W"
+            ],
+            "allow_other": True,
+            "other_placeholder": "Type custom extra item...",
+            "system_fixed": False,
+            "description": "Predefined extra accessories, transceivers, cables, and hardware equipment"
+        },
+        {
             "key": "deployment_folder",
             "label": "Deployment Folder",
             "type": "text",

@@ -2,8 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import text, Column, String, func
 from app.db.base import get_db
-from app.models import Deployment, AuditLog, User, Company, Location, Credential, DeploymentPhaseRemark
-from app.schemas import DeploymentSchema, DeploymentResponse, PhaseRemarkCreate, PhaseRemarkResponse
+from app.models import Deployment, AuditLog, User, Company, Location, Credential, DeploymentPhaseRemark, DeploymentExtraItem
+from app.schemas import DeploymentSchema, DeploymentResponse, PhaseRemarkCreate, PhaseRemarkResponse, ExtraItemCreate, ExtraItemResponse
 from app.api.deps import get_current_user, require_permission
 from app.core.audit import parse_client_info, resolve_external_ip, is_internal_docker_ip
 from typing import List, Optional, Set, Any, Dict
@@ -506,4 +506,127 @@ async def create_deployment_phase_remark(
     db.commit()
 
     return remark_entry
+
+# Extra Items / Hardware Accessories Endpoints
+@router.get("/{id}/extra-items", response_model=List[ExtraItemResponse])
+async def get_deployment_extra_items(
+    id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    return db.query(DeploymentExtraItem).filter(DeploymentExtraItem.deployment_id == id).order_by(DeploymentExtraItem.created_at.asc()).all()
+
+@router.post("/{id}/extra-items", response_model=ExtraItemResponse, status_code=201)
+async def create_deployment_extra_item(
+    id: str,
+    data: ExtraItemCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    deployment = db.query(Deployment).filter(Deployment.id == id, Deployment.deleted_at == None).first()
+    if not deployment:
+        raise HTTPException(404, "Deployment not found")
+
+    item = DeploymentExtraItem(
+        deployment_id=deployment.id,
+        item_name=data.item_name.strip(),
+        quantity=max(1, data.quantity),
+        notes=data.notes.strip() if data.notes else None
+    )
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+
+    client_info = parse_client_info(request)
+    audit_log = AuditLog(
+        user_id=current_user.id,
+        action="create_extra_item",
+        resource_type="deployment",
+        resource_id=deployment.id,
+        ip_address=client_info["ip_address"],
+        new_value={
+            "item_name": item.item_name,
+            "quantity": item.quantity,
+            "customer_name": deployment.customer_name,
+            **client_info
+        },
+        notes=f"Added extra item '{item.item_name}' (Qty: {item.quantity}) to deployment {deployment.customer_name}"
+    )
+    db.add(audit_log)
+    db.commit()
+
+    return item
+
+@router.put("/{id}/extra-items/{item_id}", response_model=ExtraItemResponse)
+async def update_deployment_extra_item(
+    id: str,
+    item_id: str,
+    data: ExtraItemCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    item = db.query(DeploymentExtraItem).filter(
+        DeploymentExtraItem.id == item_id,
+        DeploymentExtraItem.deployment_id == id
+    ).first()
+    if not item:
+        raise HTTPException(404, "Extra item not found")
+
+    old_val = {"item_name": item.item_name, "quantity": item.quantity}
+    item.item_name = data.item_name.strip()
+    item.quantity = max(1, data.quantity)
+    if data.notes is not None:
+        item.notes = data.notes.strip() if data.notes else None
+    
+    db.commit()
+    db.refresh(item)
+
+    client_info = parse_client_info(request)
+    audit_log = AuditLog(
+        user_id=current_user.id,
+        action="update_extra_item",
+        resource_type="deployment",
+        resource_id=UUID(id),
+        ip_address=client_info["ip_address"],
+        old_value=old_val,
+        new_value={"item_name": item.item_name, "quantity": item.quantity, **client_info},
+        notes=f"Updated extra item '{item.item_name}' (Qty: {item.quantity})"
+    )
+    db.add(audit_log)
+    db.commit()
+
+    return item
+
+@router.delete("/{id}/extra-items/{item_id}", status_code=204)
+async def delete_deployment_extra_item(
+    id: str,
+    item_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    item = db.query(DeploymentExtraItem).filter(
+        DeploymentExtraItem.id == item_id,
+        DeploymentExtraItem.deployment_id == id
+    ).first()
+    if not item:
+        raise HTTPException(404, "Extra item not found")
+
+    client_info = parse_client_info(request)
+    audit_log = AuditLog(
+        user_id=current_user.id,
+        action="delete_extra_item",
+        resource_type="deployment",
+        resource_id=UUID(id),
+        ip_address=client_info["ip_address"],
+        old_value={"item_name": item.item_name, "quantity": item.quantity},
+        notes=f"Deleted extra item '{item.item_name}'"
+    )
+    db.add(audit_log)
+    db.delete(item)
+    db.commit()
+
+    return None
 

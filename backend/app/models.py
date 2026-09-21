@@ -129,6 +129,7 @@ class Deployment(Base):
     credentials = relationship("Credential", back_populates="deployment")
     config_reports = relationship("ConfigReport", back_populates="deployment")
     phase_remarks = relationship("DeploymentPhaseRemark", back_populates="deployment", cascade="all, delete-orphan", order_by="desc(DeploymentPhaseRemark.created_at)")
+    extra_items = relationship("DeploymentExtraItem", back_populates="deployment", cascade="all, delete-orphan", order_by="DeploymentExtraItem.created_at.asc()")
 
 class EngineerRoleType(str, enum.Enum):
     lead_engineer = "lead_engineer"
@@ -287,4 +288,16 @@ class DeploymentPhaseRemark(Base):
 
     deployment = relationship("Deployment", back_populates="phase_remarks")
     author = relationship("User", foreign_keys=[author_id])
+
+class DeploymentExtraItem(Base):
+    __tablename__ = "deployment_extra_items"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    deployment_id = Column(UUID(as_uuid=True), ForeignKey("deployments.id", ondelete="CASCADE"), nullable=False, index=True)
+    item_name = Column(String, nullable=False)
+    quantity = Column(Integer, default=1, nullable=False)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    deployment = relationship("Deployment", back_populates="extra_items")
 

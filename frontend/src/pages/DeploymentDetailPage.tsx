@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { SearchableSelect } from '../components/SearchableSelect';
 import { useParams, Link, useNavigate, useBlocker } from 'react-router-dom';
 import { 
   Building2, 
@@ -43,9 +44,14 @@ import {
   getDeploymentFieldSettings, 
   getPhaseRemarks,
   createPhaseRemark,
+  getDeploymentExtraItems,
+  createDeploymentExtraItem,
+  updateDeploymentExtraItem,
+  deleteDeploymentExtraItem,
   type DeploymentData, 
   type CredentialData,
-  type PhaseRemarkItem 
+  type PhaseRemarkItem,
+  type ExtraItem
 } from '../api';
 import NewCredentialModal from '../components/NewCredentialModal';
 import EditCredentialModal from '../components/EditCredentialModal';
@@ -97,9 +103,19 @@ export const DeploymentDetailPage = () => {
 
   const [fieldSettings, setFieldSettings] = useState<any[]>([]);
   const [inlineEditingField, setInlineEditingField] = useState<string | null>(null);
-  const [inlineEditingValue, setInlineEditingValue] = useState<string>('');
+  const [inlineEditingValue, setInlineEditingValue] = useState<any>('');
   const [isSavingInline, setIsSavingInline] = useState(false);
   const [inlineError, setInlineError] = useState<string | null>(null);
+
+  // Extra Items State
+  const [extraItems, setExtraItems] = useState<ExtraItem[]>([]);
+  const [isExtraItemModalOpen, setIsExtraItemModalOpen] = useState(false);
+  const [editingExtraItem, setEditingExtraItem] = useState<ExtraItem | null>(null);
+  const [extraItemName, setExtraItemName] = useState('');
+  const [extraItemQuantity, setExtraItemQuantity] = useState(1);
+  const [extraItemNotes, setExtraItemNotes] = useState('');
+  const [isSubmittingExtraItem, setIsSubmittingExtraItem] = useState(false);
+  const [extraItemError, setExtraItemError] = useState<string | null>(null);
 
   const currentActiveRemark = phaseRemarks.find(r => !r.is_archived) || null;
   const originalRemarkText = currentActiveRemark?.remark || '';
@@ -152,7 +168,10 @@ export const DeploymentDetailPage = () => {
       setLoadingRemarks(true);
       const data = await getPhaseRemarks(id, phaseName);
       setPhaseRemarks(data || []);
-    } catch (err) {
+    } catch (err: any) {
+      if (err?.name === 'CanceledError' || err?.code === 'ERR_CANCELED' || err?.code === 'ECONNABORTED' || err?.message === 'canceled' || err?.message === 'Request aborted') {
+        return;
+      }
       console.error('Failed to fetch phase remarks', err);
     } finally {
       setLoadingRemarks(false);
@@ -225,10 +244,87 @@ export const DeploymentDetailPage = () => {
         console.warn('Could not load credentials for deployment:', credErr);
         setCredentials([]);
       }
-    } catch (err) {
+
+      try {
+        const itemData = await getDeploymentExtraItems(id);
+        setExtraItems(itemData || []);
+      } catch (itemErr) {
+        console.warn('Could not load extra items for deployment:', itemErr);
+        setExtraItems([]);
+      }
+    } catch (err: any) {
+      if (err?.name === 'CanceledError' || err?.code === 'ERR_CANCELED' || err?.code === 'ECONNABORTED' || err?.message === 'canceled' || err?.message === 'Request aborted') {
+        return;
+      }
       console.error('Failed to fetch deployment details', err);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleOpenAddExtraItemModal = () => {
+    setEditingExtraItem(null);
+    setExtraItemName('');
+    setExtraItemQuantity(1);
+    setExtraItemNotes('');
+    setExtraItemError(null);
+    setIsExtraItemModalOpen(true);
+  };
+
+  const handleOpenEditExtraItemModal = (item: ExtraItem) => {
+    setEditingExtraItem(item);
+    setExtraItemName(item.item_name);
+    setExtraItemQuantity(item.quantity);
+    setExtraItemNotes(item.notes || '');
+    setExtraItemError(null);
+    setIsExtraItemModalOpen(true);
+  };
+
+  const handleSaveExtraItem = async () => {
+    if (!id || !extraItemName.trim()) {
+      setExtraItemError('Please select or enter an item name.');
+      return;
+    }
+    if (extraItemQuantity <= 0) {
+      setExtraItemError('Quantity must be at least 1.');
+      return;
+    }
+
+    try {
+      setIsSubmittingExtraItem(true);
+      setExtraItemError(null);
+      if (editingExtraItem) {
+        await updateDeploymentExtraItem(id, editingExtraItem.id, {
+          item_name: extraItemName.trim(),
+          quantity: Number(extraItemQuantity),
+          notes: extraItemNotes.trim() || undefined
+        });
+      } else {
+        await createDeploymentExtraItem(id, {
+          item_name: extraItemName.trim(),
+          quantity: Number(extraItemQuantity),
+          notes: extraItemNotes.trim() || undefined
+        });
+      }
+      setIsExtraItemModalOpen(false);
+      setEditingExtraItem(null);
+      const updatedList = await getDeploymentExtraItems(id);
+      setExtraItems(updatedList || []);
+    } catch (err: any) {
+      setExtraItemError(err?.response?.data?.detail || 'Failed to save extra item.');
+    } finally {
+      setIsSubmittingExtraItem(false);
+    }
+  };
+
+  const handleDeleteExtraItem = async (itemId: string) => {
+    if (!id) return;
+    if (!window.confirm('Are you sure you want to delete this item?')) return;
+    try {
+      await deleteDeploymentExtraItem(id, itemId);
+      setExtraItems(prev => prev.filter(i => i.id !== itemId));
+    } catch (err: any) {
+      alert(err?.response?.data?.detail || 'Failed to delete extra item.');
     }
   };
 
@@ -250,7 +346,7 @@ export const DeploymentDetailPage = () => {
 
   const handleStartInlineEdit = (fieldKey: string, initialValue: any) => {
     setInlineEditingField(fieldKey);
-    let val = '';
+    let val: any = '';
     if (fieldKey === 'deployment_date') {
       if (initialValue) {
         try {
@@ -260,6 +356,8 @@ export const DeploymentDetailPage = () => {
           val = '';
         }
       }
+    } else if (fieldKey === 'assisting_engineers') {
+      val = initialValue ? (typeof initialValue === 'string' ? initialValue.split(', ').filter(Boolean) : initialValue) : [];
     } else {
       val = initialValue !== null && initialValue !== undefined ? String(initialValue) : '';
     }
@@ -273,29 +371,35 @@ export const DeploymentDetailPage = () => {
     setInlineError(null);
   };
 
-  const handleSaveInlineEdit = async (fieldKey: string) => {
+  const handleSaveInlineEdit = async (fieldKey: string, newValue?: any, keepOpen: boolean = false) => {
     if (!id || !deployment) return;
     setInlineError(null);
 
-    const trimmed = inlineEditingValue.trim();
-    if ((fieldKey === 'customer_name' || fieldKey === 'location') && !trimmed) {
-      setInlineError('This field cannot be empty.');
-      return;
-    }
+    const valToUse = newValue !== undefined ? newValue : inlineEditingValue;
 
     try {
       setIsSavingInline(true);
-      let payloadValue: any = trimmed;
-      if (fieldKey === 'deployment_date') {
-        payloadValue = trimmed ? new Date(trimmed).toISOString() : null;
-      } else if (!trimmed) {
-        payloadValue = null;
+      let payloadValue: any = null;
+      if (Array.isArray(valToUse)) {
+        payloadValue = valToUse.length > 0 ? valToUse.join(', ') : null;
+      } else {
+        const strVal = typeof valToUse === 'string' ? valToUse : String(valToUse || '');
+        const trimmed = strVal.trim();
+        if (fieldKey === 'deployment_date') {
+          payloadValue = trimmed ? new Date(trimmed).toISOString() : null;
+        } else if (!trimmed) {
+          payloadValue = null;
+        } else {
+          payloadValue = trimmed;
+        }
       }
 
       const updated = await updateDeployment(id, { [fieldKey]: payloadValue });
       setDeployment((prev: any) => prev ? { ...prev, ...updated } : updated);
-      setInlineEditingField(null);
-      setInlineEditingValue('');
+      if (!keepOpen) {
+        setInlineEditingField(null);
+        setInlineEditingValue('');
+      }
     } catch (err: any) {
       setInlineError(err?.response?.data?.detail || 'Failed to save change.');
     } finally {
@@ -679,38 +783,23 @@ export const DeploymentDetailPage = () => {
                 </div>
                 {inlineEditingField === 'deployed_product' ? (
                   <div>
-                    <div className="flex items-center pt-0.5">
-                      <select
-                        autoFocus
+                    <div className="pt-0.5">
+                      <SearchableSelect
                         value={inlineEditingValue}
-                        onChange={(e) => setInlineEditingValue(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') handleSaveInlineEdit('deployed_product');
-                          if (e.key === 'Escape') handleCancelInlineEdit();
+                        onChange={(val) => {
+                          setInlineEditingValue(val);
+                          handleSaveInlineEdit('deployed_product', val);
                         }}
-                        disabled={isSavingInline}
-                        className="w-full text-sm font-semibold text-slate-900 border border-blue-500 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                      >
-                        {getFieldOptions('deployed_product', [
+                        options={getFieldOptions('deployed_product', [
                           'FieldOps Core Gateway',
                           'Edge Compute Appliance X1',
                           'Secure Access Service Edge (SASE)',
                           'AI Inference Node Enterprise',
                           'Zero Trust Network Connector'
-                        ]).map((opt: string) => (
-                          <option key={opt} value={opt}>{opt}</option>
-                        ))}
-                        {inlineEditingValue && !getFieldOptions('deployed_product', [
-                          'FieldOps Core Gateway',
-                          'Edge Compute Appliance X1',
-                          'Secure Access Service Edge (SASE)',
-                          'AI Inference Node Enterprise',
-                          'Zero Trust Network Connector'
-                        ]).includes(inlineEditingValue) && (
-                          <option value={inlineEditingValue}>{inlineEditingValue}</option>
-                        )}
-                      </select>
-                      {renderInlineEditControls('deployed_product')}
+                        ])}
+                        allowOther={true}
+                        placeholder="-- Select Product --"
+                      />
                     </div>
                     {inlineError && <p className="text-xs text-red-600 mt-1">{inlineError}</p>}
                   </div>
@@ -736,23 +825,17 @@ export const DeploymentDetailPage = () => {
                 </div>
                 {inlineEditingField === 'deployment_type' ? (
                   <div>
-                    <div className="flex items-center pt-0.5">
-                      <select
-                        autoFocus
+                    <div className="pt-0.5">
+                      <SearchableSelect
                         value={inlineEditingValue}
-                        onChange={(e) => setInlineEditingValue(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') handleSaveInlineEdit('deployment_type');
-                          if (e.key === 'Escape') handleCancelInlineEdit();
+                        onChange={(val) => {
+                          setInlineEditingValue(val);
+                          handleSaveInlineEdit('deployment_type', val);
                         }}
-                        disabled={isSavingInline}
-                        className="w-full text-sm font-semibold text-slate-900 border border-blue-500 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                      >
-                        {getFieldOptions('deployment_type', ['Deployment', 'POC', 'Pilot', 'Trial', 'Staging']).map((opt: string) => (
-                          <option key={opt} value={opt}>{opt}</option>
-                        ))}
-                      </select>
-                      {renderInlineEditControls('deployment_type')}
+                        options={getFieldOptions('deployment_type', ['Deployment', 'POC', 'Pilot', 'Trial', 'Staging'])}
+                        allowOther={true}
+                        placeholder="-- Select Deployment Type --"
+                      />
                     </div>
                     {inlineError && <p className="text-xs text-red-600 mt-1">{inlineError}</p>}
                   </div>
@@ -778,21 +861,22 @@ export const DeploymentDetailPage = () => {
                 </div>
                 {inlineEditingField === 'account_owner' ? (
                   <div>
-                    <div className="flex items-center pt-0.5">
-                      <input
-                        type="text"
-                        autoFocus
+                    <div className="pt-0.5">
+                      <SearchableSelect
                         value={inlineEditingValue}
-                        onChange={(e) => setInlineEditingValue(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') handleSaveInlineEdit('account_owner');
-                          if (e.key === 'Escape') handleCancelInlineEdit();
+                        onChange={(val) => {
+                          setInlineEditingValue(val);
+                          handleSaveInlineEdit('account_owner', val);
                         }}
-                        disabled={isSavingInline}
-                        className="w-full text-sm font-semibold text-slate-900 border border-blue-500 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                        placeholder="Assign account owner..."
+                        options={getFieldOptions('account_owner', [
+                          'Sarah Jenkins (Account Lead)',
+                          'Alex Rivera (Customer Success)',
+                          'Marcus Vance (Enterprise Sales)',
+                          'Elena Rostova (Client Executive)'
+                        ])}
+                        allowOther={true}
+                        placeholder="Select or type account owner..."
                       />
-                      {renderInlineEditControls('account_owner')}
                     </div>
                     {inlineError && <p className="text-xs text-red-600 mt-1">{inlineError}</p>}
                   </div>
@@ -818,21 +902,22 @@ export const DeploymentDetailPage = () => {
                 </div>
                 {inlineEditingField === 'lead_engineer' ? (
                   <div>
-                    <div className="flex items-center pt-0.5">
-                      <input
-                        type="text"
-                        autoFocus
+                    <div className="pt-0.5">
+                      <SearchableSelect
                         value={inlineEditingValue}
-                        onChange={(e) => setInlineEditingValue(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') handleSaveInlineEdit('lead_engineer');
-                          if (e.key === 'Escape') handleCancelInlineEdit();
+                        onChange={(val) => {
+                          setInlineEditingValue(val);
+                          handleSaveInlineEdit('lead_engineer', val);
                         }}
-                        disabled={isSavingInline}
-                        className="w-full text-sm font-semibold text-slate-900 border border-blue-500 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                        placeholder="Assign lead engineer..."
+                        options={getFieldOptions('lead_engineer', [
+                          'Michael Chang (Principal Engineer)',
+                          'David Kim (Senior Systems Architect)',
+                          'Priya Patel (Lead Field Engineer)',
+                          'James Wilson (Deployment Lead)'
+                        ])}
+                        allowOther={true}
+                        placeholder="Select or type lead engineer..."
                       />
-                      {renderInlineEditControls('lead_engineer')}
                     </div>
                     {inlineError && <p className="text-xs text-red-600 mt-1">{inlineError}</p>}
                   </div>
@@ -858,34 +943,49 @@ export const DeploymentDetailPage = () => {
                 </div>
                 {inlineEditingField === 'assisting_engineers' ? (
                   <div>
-                    <div className="flex items-center pt-0.5">
-                      <input
-                        type="text"
-                        autoFocus
-                        value={inlineEditingValue}
-                        onChange={(e) => setInlineEditingValue(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') handleSaveInlineEdit('assisting_engineers');
-                          if (e.key === 'Escape') handleCancelInlineEdit();
+                    <div className="pt-0.5">
+                      <SearchableSelect
+                        multiple
+                        value={Array.isArray(inlineEditingValue) ? inlineEditingValue : (inlineEditingValue ? String(inlineEditingValue).split(', ').filter(Boolean) : [])}
+                        onChange={(val) => {
+                          setInlineEditingValue(val);
+                          handleSaveInlineEdit('assisting_engineers', val, true);
                         }}
-                        disabled={isSavingInline}
-                        className="w-full text-sm font-semibold text-slate-900 border border-blue-500 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                        placeholder="Add assisting engineer(s)..."
+                        onOutsideClick={() => {
+                          setInlineEditingField(null);
+                          setInlineEditingValue('');
+                        }}
+                        options={getFieldOptions('assisting_engineers', [
+                          'Sarah Miller (Field Specialist)',
+                          'David Kim (Senior Systems Architect)',
+                          'Rachel Adams (Network Engineer)',
+                          "Liam O'Connor (Infrastructure Tech)"
+                        ])}
+                        allowOther={true}
+                        placeholder="Select or type assisting engineer(s)..."
                       />
-                      {renderInlineEditControls('assisting_engineers')}
                     </div>
                     {inlineError && <p className="text-xs text-red-600 mt-1">{inlineError}</p>}
                   </div>
                 ) : (
                   <div
                     onClick={() => handleStartInlineEdit('assisting_engineers', deployment.assisting_engineers)}
-                    className="group flex items-center justify-between gap-2 p-1.5 -m-1.5 rounded-lg hover:bg-slate-50 border border-transparent hover:border-slate-200/80 cursor-pointer transition-all"
+                    className="group flex items-start justify-between gap-2 p-1.5 -m-1.5 rounded-lg hover:bg-slate-50 border border-transparent hover:border-slate-200/80 cursor-pointer transition-all"
                     title="Click to edit assisting engineer(s)"
                   >
-                    <div className="text-sm font-semibold text-slate-900 truncate">
-                      {deployment.assisting_engineers || <span className="text-slate-400 font-normal italic">None</span>}
+                    <div className="flex-1 space-y-1">
+                      {deployment.assisting_engineers ? (
+                        deployment.assisting_engineers.split(', ').filter(Boolean).map((eng: string) => (
+                          <div key={eng} className="text-sm font-semibold text-slate-900 flex items-center space-x-1.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0 inline-block" />
+                            <span className="break-words">{eng}</span>
+                          </div>
+                        ))
+                      ) : (
+                        <span className="text-slate-400 font-normal italic text-sm">None</span>
+                      )}
                     </div>
-                    <Pencil className="w-3 h-3 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                    <Pencil className="w-3 h-3 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 mt-1" />
                   </div>
                 )}
               </div>
@@ -909,39 +1009,23 @@ export const DeploymentDetailPage = () => {
                 </div>
                 {inlineEditingField === 'internal_group_name' ? (
                   <div>
-                    <div className="flex items-center pt-0.5">
-                      <select
-                        autoFocus
+                    <div className="pt-0.5">
+                      <SearchableSelect
                         value={inlineEditingValue}
-                        onChange={(e) => setInlineEditingValue(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') handleSaveInlineEdit('internal_group_name');
-                          if (e.key === 'Escape') handleCancelInlineEdit();
+                        onChange={(val) => {
+                          setInlineEditingValue(val);
+                          handleSaveInlineEdit('internal_group_name', val);
                         }}
-                        disabled={isSavingInline}
-                        className="w-full text-sm font-semibold text-slate-900 border border-blue-500 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                      >
-                        <option value="">None</option>
-                        {getFieldOptions('internal_group_name', [
+                        options={getFieldOptions('internal_group_name', [
                           'Edge Infrastructure',
                           'Core Platform',
                           'Cloud Ops',
                           'Security Team',
                           'Hardware Lab'
-                        ]).map((opt: string) => (
-                          <option key={opt} value={opt}>{opt}</option>
-                        ))}
-                        {inlineEditingValue && !getFieldOptions('internal_group_name', [
-                          'Edge Infrastructure',
-                          'Core Platform',
-                          'Cloud Ops',
-                          'Security Team',
-                          'Hardware Lab'
-                        ]).includes(inlineEditingValue) && (
-                          <option value={inlineEditingValue}>{inlineEditingValue}</option>
-                        )}
-                      </select>
-                      {renderInlineEditControls('internal_group_name')}
+                        ])}
+                        allowOther={true}
+                        placeholder="-- Select Internal Group --"
+                      />
                     </div>
                     {inlineError && <p className="text-xs text-red-600 mt-1">{inlineError}</p>}
                   </div>
@@ -1675,6 +1759,98 @@ export const DeploymentDetailPage = () => {
               )}
             </div>
           </div>
+
+          {/* Extra Items & Hardware Accessories Card */}
+          <div className="bg-white rounded-xl border border-slate-200/80 shadow-xs overflow-hidden">
+            <div className="p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div>
+                <h2 className="font-bold text-slate-900 text-lg flex items-center space-x-2">
+                  <Package className="w-5 h-5 text-blue-600" />
+                  <span>Extra Items & Hardware Accessories</span>
+                </h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Track associated cables, transceivers, rail kits, and hardware accessories for this deployment.
+                </p>
+              </div>
+              <button
+                onClick={handleOpenAddExtraItemModal}
+                className="flex items-center space-x-1.5 px-3.5 py-2 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-xs transition-all self-start sm:self-auto cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add Extra Item</span>
+              </button>
+            </div>
+
+            {/* Extra Items Table / List */}
+            <div>
+              {extraItems.length === 0 ? (
+                <div className="p-10 text-center">
+                  <Package className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+                  <p className="text-sm font-medium text-slate-700">No extra items recorded</p>
+                  <p className="text-xs text-slate-400 mt-1 mb-4">
+                    Add hardware accessories, spare cables, or transceivers required for this installation.
+                  </p>
+                  <button
+                    onClick={handleOpenAddExtraItemModal}
+                    className="inline-flex items-center space-x-1.5 px-4 py-2 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-xs cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add First Item</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="bg-slate-50/80 border-b border-slate-200/80 text-slate-500 font-semibold uppercase tracking-wider">
+                        <th className="py-3 px-4">Item</th>
+                        <th className="py-3 px-4 text-center">Quantity</th>
+                        <th className="py-3 px-4">Notes</th>
+                        <th className="py-3 px-4 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-slate-800 font-medium">
+                      {extraItems.map((item) => (
+                        <tr key={item.id} className="hover:bg-slate-50/60 transition-colors">
+                          <td className="py-3 px-4">
+                            <span className="font-semibold text-slate-900">{item.item_name}</span>
+                          </td>
+                          <td className="py-3 px-4 text-center">
+                            <span className="inline-flex items-center justify-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200/60">
+                              {item.quantity}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-slate-500 max-w-xs truncate">
+                            {item.notes || '-'}
+                          </td>
+                          <td className="py-3 px-4 text-right">
+                            <div className="flex items-center justify-end space-x-2">
+                              <button
+                                type="button"
+                                onClick={() => handleOpenEditExtraItemModal(item)}
+                                className="p-1 text-slate-400 hover:text-blue-600 rounded hover:bg-slate-100 transition-colors cursor-pointer"
+                                title="Edit item"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteExtraItem(item.id)}
+                                className="p-1 text-slate-400 hover:text-rose-600 rounded hover:bg-slate-100 transition-colors cursor-pointer"
+                                title="Delete item"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1823,6 +1999,111 @@ export const DeploymentDetailPage = () => {
               >
                 <Check className="w-3.5 h-3.5" />
                 <span>Save & Proceed</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add / Edit Extra Item Modal */}
+      {isExtraItemModalOpen && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-150 p-6 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <h3 className="font-bold text-slate-900 text-base flex items-center space-x-2">
+                <Package className="w-4 h-4 text-blue-600" />
+                <span>{editingExtraItem ? 'Edit Extra Item' : 'Add Extra Item'}</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsExtraItemModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {extraItemError && (
+              <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-lg">
+                {extraItemError}
+              </div>
+            )}
+
+            <div className="space-y-4 text-xs">
+              {/* Item Name Searchable Select */}
+              <div className="space-y-1.5">
+                <label className="block font-semibold text-slate-700">
+                  Item <span className="text-rose-500">*</span>
+                </label>
+                <SearchableSelect
+                  value={extraItemName}
+                  onChange={(val) => setExtraItemName(Array.isArray(val) ? val[0] || '' : val)}
+                  options={getFieldOptions('extra_item_options', [
+                    '10G SFP+ SR Transceiver Module',
+                    '10G SFP+ LR Transceiver Module',
+                    '1G SFP RJ45 Copper Transceiver Module',
+                    'DAC 10G Passive Direct Attach Cable (1m)',
+                    'DAC 10G Passive Direct Attach Cable (3m)',
+                    'Fiber Patch Cord LC-LC Duplex OM4 (5m)',
+                    'Cat6A Shielded Ethernet Cable (3m)',
+                    'Cat6A Shielded Ethernet Cable (10m)',
+                    'Rack Mount Rail Kit 1U',
+                    'Dual AC Power Supply Module'
+                  ])}
+                  placeholder="Select or enter item name..."
+                />
+              </div>
+
+              {/* Quantity */}
+              <div className="space-y-1.5">
+                <label className="block font-semibold text-slate-700">
+                  Quantity <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  value={extraItemQuantity}
+                  onChange={(e) => setExtraItemQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+                  className="w-full text-xs text-slate-900 border border-slate-300 rounded-lg p-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                />
+              </div>
+
+              {/* Notes */}
+              <div className="space-y-1.5">
+                <label className="block font-semibold text-slate-700">
+                  Notes / Specification (Optional)
+                </label>
+                <textarea
+                  rows={2}
+                  value={extraItemNotes}
+                  onChange={(e) => setExtraItemNotes(e.target.value)}
+                  placeholder="Additional details (e.g. Serial #, port destination)..."
+                  className="w-full text-xs text-slate-900 border border-slate-300 rounded-lg p-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end space-x-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setIsExtraItemModalOpen(false)}
+                disabled={isSubmittingExtraItem}
+                className="px-3.5 py-2 text-xs font-medium text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveExtraItem}
+                disabled={isSubmittingExtraItem}
+                className="inline-flex items-center space-x-1.5 px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg shadow-xs transition-all cursor-pointer"
+              >
+                {isSubmittingExtraItem ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Check className="w-3.5 h-3.5" />
+                )}
+                <span>{isSubmittingExtraItem ? 'Saving...' : 'Save Item'}</span>
               </button>
             </div>
           </div>
