@@ -275,9 +275,9 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
       enabled: true,
       required: newDepRequired,
       default_value: newDepDefault,
-      options: newDepType === 'select' ? newDepOptions : undefined,
-      allow_other: newDepType === 'select' ? newDepAllowOther : undefined,
-      other_placeholder: newDepType === 'select' ? newDepOtherPlaceholder : undefined,
+      options: ['select', 'multiselect'].includes(newDepType) ? newDepOptions : undefined,
+      allow_other: ['select', 'multiselect'].includes(newDepType) ? newDepAllowOther : undefined,
+      other_placeholder: ['select', 'multiselect'].includes(newDepType) ? newDepOtherPlaceholder : undefined,
       system_fixed: false,
       description: 'Custom deployment field'
     };
@@ -846,7 +846,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
                   {deploymentSettings?.fields.map((field, index) => {
                     const isFixed = field.system_fixed;
                     const isEnabled = field.enabled;
-                    const isSelect = field.type === 'select';
+                    const isSelect = field.type === 'select' || field.type === 'multiselect';
                     const isCollapsed = deploymentCollapsed[field.key] ?? true;
                     const totalFields = deploymentSettings.fields.length;
 
@@ -1481,7 +1481,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
                       const originalIndex = companySettings.fields.findIndex(item => item.key === field.key);
                       const isFixed = field.system_fixed;
                       const isEnabled = field.enabled;
-                      const isSelect = field.type === 'select';
+                      const isSelect = field.type === 'select' || field.type === 'multiselect';
                       const isCollapsed = companyCollapsed[field.key] ?? true;
                       const totalFields = companySettings.fields.length;
 

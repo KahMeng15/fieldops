@@ -74,7 +74,12 @@ DEFAULT_DEPLOYMENT_SETTINGS: Dict[str, Any] = {
             "enabled": True,
             "required": False,
             "default_value": "",
-            "options": [],
+            "options": [
+                "Sarah Jenkins (Account Lead)",
+                "Alex Rivera (Customer Success)",
+                "Marcus Vance (Enterprise Sales)",
+                "Elena Rostova (Client Executive)"
+            ],
             "allow_other": True,
             "other_placeholder": "Type to add new owner...",
             "system_fixed": False,
@@ -87,7 +92,12 @@ DEFAULT_DEPLOYMENT_SETTINGS: Dict[str, Any] = {
             "enabled": True,
             "required": False,
             "default_value": "",
-            "options": [],
+            "options": [
+                "Michael Chang (Principal Engineer)",
+                "David Kim (Senior Systems Architect)",
+                "Priya Patel (Lead Field Engineer)",
+                "James Wilson (Deployment Lead)"
+            ],
             "allow_other": True,
             "other_placeholder": "Type to add new lead...",
             "system_fixed": False,
@@ -100,7 +110,12 @@ DEFAULT_DEPLOYMENT_SETTINGS: Dict[str, Any] = {
             "enabled": True,
             "required": False,
             "default_value": "",
-            "options": [],
+            "options": [
+                "Sarah Miller (Field Specialist)",
+                "David Kim (Senior Systems Architect)",
+                "Rachel Adams (Network Engineer)",
+                "Liam O'Connor (Infrastructure Tech)"
+            ],
             "allow_other": True,
             "other_placeholder": "Type to add engineers...",
             "system_fixed": False,
@@ -419,11 +434,29 @@ async def get_deployment_field_settings(
         data = json.loads(setting_cat.description)
         # Strip legacy customer_name and location fields from customizable list
         data["fields"] = [f for f in data.get("fields", []) if f.get("key") not in ["customer_name", "location"]]
+        
+        # Sync field types and options from default settings
+        default_options_map = {f["key"]: f.get("options", []) for f in DEFAULT_DEPLOYMENT_SETTINGS.get("fields", []) if f.get("options")}
+        default_type_map = {f["key"]: f.get("type") for f in DEFAULT_DEPLOYMENT_SETTINGS.get("fields", []) if f.get("type")}
+        updated_any = False
+        
+        for f in data.get("fields", []):
+            k = f.get("key")
+            # Upgrade field types if updated in system defaults
+            if k in default_type_map and f.get("type") != default_type_map[k]:
+                f["type"] = default_type_map[k]
+                updated_any = True
+            # Backfill default options if options are empty
+            if k in default_options_map and not f.get("options"):
+                f["options"] = default_options_map[k]
+                updated_any = True
+
         # Ensure any newly added default fields are present
         existing_keys = {f.get("key") for f in data.get("fields", [])}
         missing_defaults = [f for f in DEFAULT_DEPLOYMENT_SETTINGS.get("fields", []) if f.get("key") not in existing_keys]
-        if missing_defaults:
-            data["fields"].extend(missing_defaults)
+        if missing_defaults or updated_any:
+            if missing_defaults:
+                data["fields"].extend(missing_defaults)
             setting_cat.description = json.dumps(data)
             db.commit()
             sync_database_columns(db, data)
