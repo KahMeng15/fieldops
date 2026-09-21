@@ -1,3 +1,4 @@
+import { SearchableSelect } from "./SearchableSelect";
 import React, { useState, useEffect } from 'react';
 import { 
   X, 
@@ -69,7 +70,7 @@ export const NewDeploymentModal: React.FC<NewDeploymentModalProps> = ({
   const [internalGroupName, setInternalGroupName] = useState('');
   const [accountOwner, setAccountOwner] = useState('');
   const [leadEngineer, setLeadEngineer] = useState('');
-  const [assistingEngineers, setAssistingEngineers] = useState('');
+  const [assistingEngineers, setAssistingEngineers] = useState<string[]>([]);
   const [status, setStatus] = useState('Planning');
   const [deploymentFolder, setDeploymentFolder] = useState('');
   const [notes, setNotes] = useState('');
@@ -137,7 +138,7 @@ export const NewDeploymentModal: React.FC<NewDeploymentModalProps> = ({
           setInternalGroupName(groupField?.default_value ?? '');
           setAccountOwner(ownerField?.default_value ?? '');
           setLeadEngineer(leadField?.default_value ?? '');
-          setAssistingEngineers(assistField?.default_value ?? '');
+          setAssistingEngineers(assistField?.default_value ? assistField.default_value.split(', ').filter(Boolean) : []);
           setStatus(statusField?.default_value ?? '');
           setNotes(notesField?.default_value ?? '');
 
@@ -277,7 +278,7 @@ export const NewDeploymentModal: React.FC<NewDeploymentModalProps> = ({
         payload.lead_engineer = leadEngineer.trim() || null;
       }
       if (isFieldEnabled('assisting_engineers')) {
-        payload.assisting_engineers = assistingEngineers.trim() || null;
+        payload.assisting_engineers = assistingEngineers.length > 0 ? assistingEngineers.join(', ') : null;
       }
       if (isFieldEnabled('notes')) {
         payload.notes = notes.trim() || null;
@@ -540,19 +541,15 @@ export const NewDeploymentModal: React.FC<NewDeploymentModalProps> = ({
                     </label>
                     <div className="relative">
                       <Tag className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
-                      <select
-                        value={deploymentType}
-                        required={isFieldRequired('deployment_type')}
-                        onChange={e => setDeploymentType(e.target.value)}
-                        className="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
-                      >
-                        <option value="">-- Select Deployment Type --</option>
-                        {(getField('deployment_type')?.options || ['Deployment', 'POC', 'Pilot', 'Trial', 'Staging']).map(opt => (
-                          <option key={opt} value={opt}>
-                            {opt}
-                          </option>
-                        ))}
-                      </select>
+                      <div className="pl-8">
+                        <SearchableSelect
+                          value={deploymentType}
+                          onChange={(v) => setDeploymentType(v as string)}
+                          options={getField('deployment_type')?.options || ['Deployment', 'POC', 'Pilot', 'Trial', 'Staging']}
+                          allowOther={getField('deployment_type')?.allow_other ?? true}
+                          placeholder="-- Select Deployment Type --"
+                        />
+                      </div>
                     </div>
                   </div>
                 )}
@@ -563,19 +560,13 @@ export const NewDeploymentModal: React.FC<NewDeploymentModalProps> = ({
                     <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
                       Status {isFieldRequired('pre_poc_status') && '*'}
                     </label>
-                    <select
+                    <SearchableSelect
                       value={status}
-                      required={isFieldRequired('pre_poc_status')}
-                      onChange={e => setStatus(e.target.value)}
-                      className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
-                    >
-                      <option value="">-- Select Status --</option>
-                      {(getField('pre_poc_status')?.options || ['Cancelled', 'Planning', 'Pre-POC', 'In Progress', 'On Hold', 'Completed']).map(opt => (
-                        <option key={opt} value={opt}>
-                          {opt}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={(v) => setStatus(v as string)}
+                      options={getField('pre_poc_status')?.options || ['Cancelled', 'Planning', 'Pre-POC', 'In Progress', 'On Hold', 'Completed']}
+                      allowOther={getField('pre_poc_status')?.allow_other ?? false}
+                      placeholder="-- Select Status --"
+                    />
                   </div>
                 )}
               </div>
@@ -589,14 +580,15 @@ export const NewDeploymentModal: React.FC<NewDeploymentModalProps> = ({
                     </label>
                     <div className="relative">
                       <User className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
-                      <input
-                        type="text"
-                        value={accountOwner}
-                        required={isFieldRequired('account_owner')}
-                        onChange={e => setAccountOwner(e.target.value)}
-                        placeholder="e.g. Sarah Jenkins (Account Lead)"
-                        className="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
-                      />
+                      <div className="pl-8">
+                        <SearchableSelect
+                          value={accountOwner}
+                          onChange={(v) => setAccountOwner(v as string)}
+                          options={getField('account_owner')?.options || []}
+                          allowOther={getField('account_owner')?.allow_other ?? true}
+                          placeholder={getField('account_owner')?.other_placeholder || "e.g. Sarah Jenkins"}
+                        />
+                      </div>
                     </div>
                   </div>
                 )}
@@ -653,14 +645,16 @@ export const NewDeploymentModal: React.FC<NewDeploymentModalProps> = ({
                     </label>
                     <div className="relative">
                       <Users className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
-                      <input
-                        type="text"
-                        value={assistingEngineers}
-                        required={isFieldRequired('assisting_engineers')}
-                        onChange={e => setAssistingEngineers(e.target.value)}
-                        placeholder="e.g. Sarah Miller, David Kim"
-                        className="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
-                      />
+                      <div className="pl-8">
+                        <SearchableSelect
+                          multiple
+                          value={assistingEngineers}
+                          onChange={(v) => setAssistingEngineers(v as string[])}
+                          options={getField('assisting_engineers')?.options || []}
+                          allowOther={getField('assisting_engineers')?.allow_other ?? true}
+                          placeholder={getField('assisting_engineers')?.other_placeholder || "e.g. Sarah Miller, David Kim"}
+                        />
+                      </div>
                     </div>
                   </div>
                 )}
@@ -714,19 +708,22 @@ export const NewDeploymentModal: React.FC<NewDeploymentModalProps> = ({
                       {f.label} {f.required && '*'}
                     </label>
                     {f.type === 'select' ? (
-                      <select
-                        required={f.required}
+                      <SearchableSelect
                         value={customValues[f.key] || ''}
-                        onChange={e => setCustomValues(prev => ({ ...prev, [f.key]: e.target.value }))}
-                        className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
-                      >
-                        <option value="">-- Select {f.label} --</option>
-                        {(f.options || []).map(opt => (
-                          <option key={opt} value={opt}>
-                            {opt}
-                          </option>
-                        ))}
-                      </select>
+                        onChange={(v) => setCustomValues(prev => ({ ...prev, [f.key]: v as string }))}
+                        options={f.options || []}
+                        allowOther={f.allow_other ?? true}
+                        placeholder={`-- Select ${f.label} --`}
+                      />
+                    ) : f.type === 'multiselect' ? (
+                      <SearchableSelect
+                        multiple
+                        value={customValues[f.key] ? (typeof customValues[f.key] === 'string' ? customValues[f.key].split(', ') : customValues[f.key]) : []}
+                        onChange={(v) => setCustomValues(prev => ({ ...prev, [f.key]: (v as string[]).join(', ') }))}
+                        options={f.options || []}
+                        allowOther={f.allow_other ?? true}
+                        placeholder={`-- Select ${f.label} --`}
+                      />
                     ) : (
                       <input
                         type="text"

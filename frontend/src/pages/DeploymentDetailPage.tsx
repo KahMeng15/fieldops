@@ -576,38 +576,15 @@ export const DeploymentDetailPage = () => {
             {/* Card Header */}
             <div className="p-5 border-b border-slate-100 flex items-start justify-between gap-3">
               <div className="space-y-1 min-w-0 flex-1">
-                {inlineEditingField === 'customer_name' ? (
-                  <div className="space-y-1 py-1">
-                    <div className="flex items-center gap-1.5">
-                      <input
-                        type="text"
-                        autoFocus
-                        value={inlineEditingValue}
-                        onChange={(e) => setInlineEditingValue(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') handleSaveInlineEdit('customer_name');
-                          if (e.key === 'Escape') handleCancelInlineEdit();
-                        }}
-                        disabled={isSavingInline}
-                        className="w-full text-base font-bold text-slate-900 border border-blue-500 rounded-lg px-2.5 py-1 focus:ring-2 focus:ring-blue-500/20 focus:outline-none bg-white"
-                        placeholder="Customer name..."
-                      />
-                      {renderInlineEditControls('customer_name')}
-                    </div>
-                    {inlineError && <p className="text-xs text-red-600 font-medium">{inlineError}</p>}
-                  </div>
-                ) : (
-                  <div
-                    onClick={() => handleStartInlineEdit('customer_name', deployment.customer_name)}
-                    className="group flex items-center justify-between gap-2 p-1.5 -m-1.5 rounded-lg hover:bg-slate-50 border border-transparent hover:border-slate-200/80 cursor-pointer transition-all"
-                    title="Click to edit customer name"
-                  >
-                    <h1 className="text-xl sm:text-2xl font-bold text-slate-900 truncate" title={deployment.customer_name}>
+                <h1 className="text-xl sm:text-2xl font-bold text-slate-900 truncate" title={deployment.customer_name}>
+                  {deployment.company_id ? (
+                    <Link to={`/companies/${deployment.company_id}`} className="hover:text-blue-600 hover:underline">
                       {deployment.customer_name}
-                    </h1>
-                    <Pencil className="w-3.5 h-3.5 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
-                  </div>
-                )}
+                    </Link>
+                  ) : (
+                    deployment.customer_name
+                  )}
+                </h1>
                 <p className="text-xs text-slate-500">
                   Deployment Specifications
                 </p>
@@ -919,38 +896,9 @@ export const DeploymentDetailPage = () => {
                   <MapPin className="w-3.5 h-3.5 text-slate-400" />
                   <span>Datacenter / Location</span>
                 </div>
-                {inlineEditingField === 'location' ? (
-                  <div>
-                    <div className="flex items-center pt-0.5">
-                      <input
-                        type="text"
-                        autoFocus
-                        value={inlineEditingValue}
-                        onChange={(e) => setInlineEditingValue(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') handleSaveInlineEdit('location');
-                          if (e.key === 'Escape') handleCancelInlineEdit();
-                        }}
-                        disabled={isSavingInline}
-                        className="w-full text-sm font-semibold text-slate-900 border border-blue-500 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                        placeholder="Datacenter or location..."
-                      />
-                      {renderInlineEditControls('location')}
-                    </div>
-                    {inlineError && <p className="text-xs text-red-600 mt-1">{inlineError}</p>}
-                  </div>
-                ) : (
-                  <div
-                    onClick={() => handleStartInlineEdit('location', deployment.location)}
-                    className="group flex items-center justify-between gap-2 p-1.5 -m-1.5 rounded-lg hover:bg-slate-50 border border-transparent hover:border-slate-200/80 cursor-pointer transition-all"
-                    title="Click to edit location"
-                  >
-                    <div className="text-sm font-semibold text-slate-900 truncate">
-                      {deployment.location}
-                    </div>
-                    <Pencil className="w-3 h-3 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
-                  </div>
-                )}
+                <div className="text-sm font-semibold text-slate-900 truncate">
+                  {deployment.location}
+                </div>
               </div>
 
               {/* Field 7: Internal Group */}
@@ -1240,7 +1188,15 @@ export const DeploymentDetailPage = () => {
             {/* Stepper Timeline Body */}
             <div className="p-5 sm:p-6 bg-slate-50/50">
               {(() => {
-                const currentStatus = deployment.pre_poc_status || 'Planning';
+                const rawStatus = deployment.pre_poc_status || 'Planning';
+                const statusAliases: Record<string, string> = {
+                  Active: 'In Progress',
+                };
+                const currentStatus = statusOptions.includes(rawStatus)
+                  ? rawStatus
+                  : statusAliases[rawStatus] && statusOptions.includes(statusAliases[rawStatus])
+                  ? statusAliases[rawStatus]
+                  : rawStatus;
                 const currentStepIndex = Math.max(0, statusOptions.indexOf(currentStatus));
                 const isCancelled = currentStatus === 'Cancelled';
                 const cancelledIsFirst = statusOptions[0] === 'Cancelled';
@@ -1250,7 +1206,7 @@ export const DeploymentDetailPage = () => {
                   ? 0 
                   : currentNormalIndex >= 0 && normalSteps.length > 1
                   ? Math.round((currentNormalIndex / (normalSteps.length - 1)) * 100)
-                  : currentNormalIndex === 0 ? 0 : 100;
+                  : 0;
                 const segmentColor = 
                   currentStatus === 'Completed' 
                     ? 'bg-emerald-600' 
@@ -1360,6 +1316,8 @@ export const DeploymentDetailPage = () => {
                     <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between text-xs text-slate-500 px-1">
                       {isCancelled ? (
                         <span>Status: <strong className="text-red-600 font-semibold">Deployment Cancelled</strong></span>
+                      ) : currentNormalIndex < 0 ? (
+                        <span>Status: <strong className="text-slate-700 font-semibold">{rawStatus}</strong> (not in configured workflow)</span>
                       ) : (
                         <span>Progress: <strong className="text-slate-700 font-semibold">{progressPercent}%</strong> ({currentNormalIndex + 1} of {normalSteps.length} phases)</span>
                       )}

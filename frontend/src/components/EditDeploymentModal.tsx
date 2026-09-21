@@ -1,22 +1,22 @@
+import { SearchableSelect } from "./SearchableSelect";
 import React, { useState, useEffect } from 'react';
 import { 
   X, 
-  Package, 
   Building2, 
   MapPin, 
-  User, 
-  Users,
-  Wrench,
   Calendar, 
-  Layers, 
-  Activity, 
   CheckCircle2,
-  FolderOpen
+  FolderOpen,
+  Package,
+  Wrench,
+  Layers,
+  Activity,
 } from 'lucide-react';
 import { 
   updateDeployment, 
   getDeploymentFieldSettings, 
-  type DeploymentData 
+  type DeploymentData,
+  type DeploymentFieldsSettings
 } from '../api';
 
 interface EditDeploymentModalProps {
@@ -44,6 +44,8 @@ export const EditDeploymentModal: React.FC<EditDeploymentModalProps> = ({
   const [deploymentDate, setDeploymentDate] = useState('');
   const [deploymentFolder, setDeploymentFolder] = useState('');
   const [notes, setNotes] = useState('');
+  const [customValues, setCustomValues] = useState<Record<string, string>>({});
+  const [otherValues, setOtherValues] = useState<Record<string, string>>({});
 
   const [typeOptions, setTypeOptions] = useState<string[]>(['Deployment', 'POC']);
   const [statusOptions, setStatusOptions] = useState<string[]>([
@@ -51,19 +53,39 @@ export const EditDeploymentModal: React.FC<EditDeploymentModalProps> = ({
   ]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [settings, setSettings] = useState<DeploymentFieldsSettings | null>(null);
 
   useEffect(() => {
     if (isOpen) {
       getDeploymentFieldSettings()
-        .then(settings => {
-          const tf = settings.fields.find(f => f.key === 'deployment_type');
+        .then(settingsData => {
+          setSettings(settingsData);
+          const tf = settingsData.fields.find((f: any) => f.key === 'deployment_type');
           if (tf?.options?.length) setTypeOptions(tf.options);
-          const sf = settings.fields.find(f => f.key === 'pre_poc_status');
+          const sf = settingsData.fields.find((f: any) => f.key === 'pre_poc_status');
           if (sf?.options?.length) setStatusOptions(sf.options);
+
+          const coreKeys = new Set([
+            'customer_name', 'location', 'deployed_product', 'deployment_date',
+            'deployment_type', 'internal_group_name', 'account_owner',
+            'lead_engineer', 'assisting_engineers', 'pre_poc_status', 'notes',
+            'deployment_folder'
+          ]);
+          const initialCustom: Record<string, string> = {};
+          settingsData.fields
+            .filter((field: any) => field.enabled && !coreKeys.has(field.key))
+            .forEach((field: any) => {
+              const value = (deployment as Record<string, unknown> | null)?.[field.key];
+              initialCustom[field.key] = value !== undefined && value !== null
+                ? String(value)
+                : field.default_value || '';
+            });
+          setCustomValues(initialCustom);
+          setOtherValues({});
         })
         .catch(() => {});
     }
-  }, [isOpen]);
+  }, [isOpen, deployment]);
 
   useEffect(() => {
     if (deployment && isOpen) {
@@ -98,6 +120,8 @@ export const EditDeploymentModal: React.FC<EditDeploymentModalProps> = ({
     }
   }, [deployment, isOpen]);
 
+    const getField = (key: string) => settings?.fields.find((f: any) => f.key === key);
+
   if (!isOpen || !deployment) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -115,7 +139,7 @@ export const EditDeploymentModal: React.FC<EditDeploymentModalProps> = ({
       setIsSubmitting(true);
       setError(null);
 
-      const payload: Partial<DeploymentData> = {
+      const payload: Record<string, any> = {
         customer_name: customerName.trim(),
         location: location.trim(),
         deployed_product: deployedProduct.trim() || undefined,
@@ -130,7 +154,22 @@ export const EditDeploymentModal: React.FC<EditDeploymentModalProps> = ({
         notes: notes.trim() || undefined,
       };
 
-      const updated = await updateDeployment(deployment.id!, payload);
+      const coreKeys = new Set([
+        'customer_name', 'location', 'deployed_product', 'deployment_date',
+        'deployment_type', 'internal_group_name', 'account_owner',
+        'lead_engineer', 'assisting_engineers', 'pre_poc_status', 'notes',
+        'deployment_folder'
+      ]);
+      (settings?.fields || [])
+        .filter(field => field.enabled && !coreKeys.has(field.key))
+        .forEach(field => {
+          const rawValue = customValues[field.key] ?? '';
+          payload[field.key] = (rawValue === 'Other' && otherValues[field.key]?.trim())
+            ? otherValues[field.key].trim()
+            : rawValue || undefined;
+        });
+
+      const updated = await updateDeployment(deployment.id!, payload as Partial<DeploymentData>);
       onSuccess(updated);
       onClose();
     } catch (err: any) {
@@ -212,14 +251,13 @@ export const EditDeploymentModal: React.FC<EditDeploymentModalProps> = ({
               <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
                 Deployed Product
               </label>
-              <div className="relative">
-                <Package className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
-                <input
-                  type="text"
+              <div className="pl-8">
+                <SearchableSelect
                   value={deployedProduct}
-                  onChange={e => setDeployedProduct(e.target.value)}
-                  placeholder="e.g. FieldOps Core Gateway"
-                  className="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  onChange={(v) => setDeployedProduct(v as string)}
+                  options={getField('deployed_product')?.options || ['FieldOps Core Gateway', 'FieldOps Edge Device']}
+                  allowOther={getField('deployed_product')?.allow_other ?? true}
+                  placeholder="-- Select Product --"
                 />
               </div>
             </div>
@@ -229,14 +267,13 @@ export const EditDeploymentModal: React.FC<EditDeploymentModalProps> = ({
               <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
                 Account Owner
               </label>
-              <div className="relative">
-                <User className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
-                <input
-                  type="text"
+              <div className="pl-8">
+                <SearchableSelect
                   value={accountOwner}
-                  onChange={e => setAccountOwner(e.target.value)}
-                  placeholder="e.g. Jane Doe"
-                  className="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  onChange={(v) => setAccountOwner(v as string)}
+                  options={getField('account_owner')?.options || []}
+                  allowOther={getField('account_owner')?.allow_other ?? true}
+                  placeholder={getField('account_owner')?.other_placeholder || "e.g. Sarah Jenkins"}
                 />
               </div>
             </div>
@@ -264,7 +301,6 @@ export const EditDeploymentModal: React.FC<EditDeploymentModalProps> = ({
                 Assisting Engineer(s)
               </label>
               <div className="relative">
-                <Users className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
                 <input
                   type="text"
                   value={assistingEngineers}
@@ -382,6 +418,46 @@ export const EditDeploymentModal: React.FC<EditDeploymentModalProps> = ({
               />
             </div>
           </div>
+
+          {settings?.fields
+            .filter(field => field.enabled && ![
+              'customer_name', 'location', 'deployed_product', 'deployment_date',
+              'deployment_type', 'internal_group_name', 'account_owner',
+              'lead_engineer', 'assisting_engineers', 'pre_poc_status', 'notes',
+              'deployment_folder'
+            ].includes(field.key))
+            .map(field => (
+              <div key={field.key}>
+                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                  {field.label} {field.required && '*'}
+                </label>
+                {field.type === 'select' ? (
+                  <SearchableSelect
+                    value={customValues[field.key] || ''}
+                    onChange={value => setCustomValues(prev => ({ ...prev, [field.key]: value as string }))}
+                    options={field.options || []}
+                    allowOther={field.allow_other ?? false}
+                    placeholder={`-- Select ${field.label} --`}
+                  />
+                ) : field.type === 'textarea' ? (
+                  <textarea
+                    rows={2}
+                    required={field.required}
+                    value={customValues[field.key] || ''}
+                    onChange={event => setCustomValues(prev => ({ ...prev, [field.key]: event.target.value }))}
+                    className="w-full p-3 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                ) : (
+                  <input
+                    type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'}
+                    required={field.required}
+                    value={customValues[field.key] || ''}
+                    onChange={event => setCustomValues(prev => ({ ...prev, [field.key]: event.target.value }))}
+                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                )}
+              </div>
+            ))}
 
           {/* Actions */}
           <div className="pt-4 flex items-center justify-end space-x-3 border-t border-slate-100">

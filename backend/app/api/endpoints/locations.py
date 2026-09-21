@@ -42,9 +42,8 @@ async def list_locations(
             "company_id": loc.company_id,
             "name": loc.name,
             "address": loc.address,
-            "city": loc.city,
-            "country": loc.country,
-            "datacenter_tier": loc.datacenter_tier,
+            "district": loc.district,
+            "state": loc.state,
             "notes": loc.notes,
             "deployments_count": dep_count,
             "created_at": loc.created_at,
@@ -73,9 +72,8 @@ async def get_location(
         company_id=loc.company_id,
         name=loc.name,
         address=loc.address,
-        city=loc.city,
-        country=loc.country,
-        datacenter_tier=loc.datacenter_tier,
+        district=loc.district,
+        state=loc.state,
         notes=loc.notes,
         deployments_count=dep_count,
         created_at=loc.created_at,
@@ -116,12 +114,10 @@ async def update_location(
         loc.name = data.name.strip()
     if data.address is not None:
         loc.address = data.address
-    if data.city is not None:
-        loc.city = data.city
-    if data.country is not None:
-        loc.country = data.country
-    if data.datacenter_tier is not None:
-        loc.datacenter_tier = data.datacenter_tier
+    if data.district is not None:
+        loc.district = data.district
+    if data.state is not None:
+        loc.state = data.state
     if data.notes is not None:
         loc.notes = data.notes
 
@@ -144,9 +140,8 @@ async def update_location(
         company_id=loc.company_id,
         name=loc.name,
         address=loc.address,
-        city=loc.city,
-        country=loc.country,
-        datacenter_tier=loc.datacenter_tier,
+        district=loc.district,
+        state=loc.state,
         notes=loc.notes,
         deployments_count=dep_count,
         created_at=loc.created_at,

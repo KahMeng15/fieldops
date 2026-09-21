@@ -11,26 +11,6 @@ router = APIRouter()
 DEFAULT_DEPLOYMENT_SETTINGS: Dict[str, Any] = {
     "fields": [
         {
-            "key": "customer_name",
-            "label": "Customer / Organization Name",
-            "type": "text",
-            "enabled": True,
-            "required": True,
-            "default_value": "",
-            "system_fixed": True,
-            "description": "Primary customer or client organization name"
-        },
-        {
-            "key": "location",
-            "label": "Location / Datacenter",
-            "type": "text",
-            "enabled": True,
-            "required": True,
-            "default_value": "",
-            "system_fixed": False,
-            "description": "Physical datacenter, region, or facility identifier"
-        },
-        {
             "key": "deployed_product",
             "label": "Deployed Product",
             "type": "select",
@@ -90,30 +70,39 @@ DEFAULT_DEPLOYMENT_SETTINGS: Dict[str, Any] = {
         {
             "key": "account_owner",
             "label": "Account Owner",
-            "type": "text",
+            "type": "select",
             "enabled": True,
             "required": False,
             "default_value": "",
+            "options": [],
+            "allow_other": True,
+            "other_placeholder": "Type to add new owner...",
             "system_fixed": False,
             "description": "Primary sales account manager, customer success lead, or client executive"
         },
         {
             "key": "lead_engineer",
             "label": "Lead Engineer",
-            "type": "text",
+            "type": "select",
             "enabled": True,
             "required": False,
             "default_value": "",
+            "options": [],
+            "allow_other": True,
+            "other_placeholder": "Type to add new lead...",
             "system_fixed": False,
             "description": "Primary field or deployment engineer leading implementation"
         },
         {
             "key": "assisting_engineers",
             "label": "Assisting Engineer(s)",
-            "type": "text",
+            "type": "multiselect",
             "enabled": True,
             "required": False,
             "default_value": "",
+            "options": [],
+            "allow_other": True,
+            "other_placeholder": "Type to add engineers...",
             "system_fixed": False,
             "description": "Secondary or assisting field engineers on site or remote"
         },
@@ -428,7 +417,9 @@ async def get_deployment_field_settings(
 
     try:
         data = json.loads(setting_cat.description)
-        # Ensure any newly added default fields (e.g. account_owner) are present
+        # Strip legacy customer_name and location fields from customizable list
+        data["fields"] = [f for f in data.get("fields", []) if f.get("key") not in ["customer_name", "location"]]
+        # Ensure any newly added default fields are present
         existing_keys = {f.get("key") for f in data.get("fields", [])}
         missing_defaults = [f for f in DEFAULT_DEPLOYMENT_SETTINGS.get("fields", []) if f.get("key") not in existing_keys]
         if missing_defaults:

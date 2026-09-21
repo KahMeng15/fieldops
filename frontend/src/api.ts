@@ -431,7 +431,7 @@ export const getDeploymentCredentialLogs = async (id: string): Promise<Credentia
 export interface DeploymentFieldConfig {
   key: string;
   label: string;
-  type: 'text' | 'select' | 'textarea' | 'date' | 'number';
+  type: 'text' | 'select' | 'multiselect' | 'textarea' | 'date' | 'number';
   enabled: boolean;
   required: boolean;
   default_value: string;
@@ -467,7 +467,7 @@ export const resetDeploymentFieldSettings = async (): Promise<DeploymentFieldsSe
 export interface CompanyFieldConfig {
   key: string;
   label: string;
-  type: 'text' | 'select' | 'textarea' | 'date' | 'number';
+  type: 'text' | 'select' | 'multiselect' | 'textarea' | 'date' | 'number';
   category?: 'profile' | 'location' | 'contact';
   enabled: boolean;
   required: boolean;
