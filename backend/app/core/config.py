@@ -15,4 +15,10 @@ class Settings(BaseSettings):
     AWS_S3_ENDPOINT: str = os.getenv("AWS_S3_ENDPOINT", "http://localhost:9000")
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
 
+    # Microsoft Entra ID / Azure AD SSO Settings
+    AZURE_CLIENT_ID: str = os.getenv("AZURE_CLIENT_ID", "")
+    AZURE_CLIENT_SECRET: str = os.getenv("AZURE_CLIENT_SECRET", "")
+    AZURE_TENANT_ID: str = os.getenv("AZURE_TENANT_ID", "")
+    AZURE_REDIRECT_URI: str = os.getenv("AZURE_REDIRECT_URI", "http://localhost:3000/auth/microsoft/callback")
+
 settings = Settings()

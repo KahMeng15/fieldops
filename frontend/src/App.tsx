@@ -1,5 +1,6 @@
 import { createBrowserRouter, RouterProvider, Navigate, Outlet } from 'react-router-dom';
 import LoginPage from './pages/LoginPage';
+import MicrosoftCallbackPage from './pages/MicrosoftCallbackPage';
 import DashboardPage from './pages/DashboardPage';
 import DeploymentsPage from './pages/DeploymentsPage';
 import DeploymentDetailPage from './pages/DeploymentDetailPage';
@@ -17,6 +18,10 @@ const router = createBrowserRouter([
   {
     path: '/login',
     element: <LoginPage />
+  },
+  {
+    path: '/auth/microsoft/callback',
+    element: <MicrosoftCallbackPage />
   },
   {
     element: <PrivateRoute />,

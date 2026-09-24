@@ -55,6 +55,16 @@ export const login = async (credentials: { username: string; password: string })
   return data;
 };
 
+export const loginWithMicrosoft = async (code: string, redirect_uri?: string) => {
+  const { data } = await api.post('/auth/microsoft', { code, redirect_uri });
+  return data;
+};
+
+export const getAuthConfig = async () => {
+  const { data } = await api.get('/auth/config');
+  return data;
+};
+
 export const getMe = async () => {
   const { data } = await api.get('/auth/me');
   return data;

@@ -26,6 +26,10 @@ class LoginSchema(BaseModel):
     username: str
     password: str
 
+class MicrosoftLoginSchema(BaseModel):
+    code: str
+    redirect_uri: Optional[str] = None
+
 class Token(BaseModel):
     access_token: str
     refresh_token: str
