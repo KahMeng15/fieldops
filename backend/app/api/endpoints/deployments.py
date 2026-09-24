@@ -946,17 +946,26 @@ async def execute_excel_import(
 
     actual_db_cols = sync_orm_columns(db)
 
+    EMPTY_PLACEHOLDERS = {"none", "n/a", "na", "null", "-", "nil", "n.a.", "n.a", "none.", "n/a."}
+
+    def is_placeholder(val: str) -> bool:
+        if not val:
+            return True
+        return val.strip().lower() in EMPTY_PLACEHOLDERS
+
     def get_val(key: str, default_fallback: str = "") -> str:
         override = defaults.get(key, "").strip() if defaults.get(key) else ""
-        if override:
+        if override and not is_placeholder(override):
             return override
         col = mapping.get(key)
         v = r.get(col, "").strip() if col else ""
+        if is_placeholder(v):
+            v = ""
         return v if v else default_fallback
 
     for idx, r in enumerate(rows, start=1):
         cust_name = get_val("customer_name")
-        if not cust_name:
+        if not cust_name or is_placeholder(cust_name):
             continue
 
         # Find or create company
@@ -977,7 +986,7 @@ async def execute_excel_import(
         products_to_create.append({"product": p1_name, "qty": p1_qty})
 
         p2_name = get_val("product_2")
-        if p2_name:
+        if p2_name and not is_placeholder(p2_name):
             p2_qty_str = get_val("product_2_qty", "1")
             p2_qty = int(p2_qty_str) if p2_qty_str.isdigit() else 1
             products_to_create.append({"product": p2_name, "qty": p2_qty})
@@ -986,7 +995,7 @@ async def execute_excel_import(
         addons = []
         for i in range(1, 4):
             an_val = get_val(f"addon_{i}_name")
-            if an_val:
+            if an_val and not is_placeholder(an_val):
                 aq_str = get_val(f"addon_{i}_qty", "1")
                 aq_val = int(aq_str) if aq_str.isdigit() else 1
                 addons.append({"name": an_val, "qty": aq_val})
