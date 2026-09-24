@@ -90,6 +90,7 @@ htmlcov/
 .ruff_cache/
 
 # Databases / Local storage
+data/
 *.sqlite
 *.sqlite3
 *.db
