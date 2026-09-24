@@ -22,7 +22,10 @@ import {
   Building2,
   MapPin,
   User,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Pencil,
+  GitMerge,
+  MoreVertical
 } from 'lucide-react';
 import { Link, useBlocker } from 'react-router-dom';
 import { 
@@ -40,7 +43,9 @@ import {
   getStatesDistricts,
   updateStatesDistricts,
   type StateDistrictItem,
-  resetDatabase
+  resetDatabase,
+  renameFieldOption,
+  mergeFieldOption
 } from '../api';
 import ExcelImportModal from '../components/ExcelImportModal';
 
@@ -107,6 +112,127 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
   const [resetPassword, setResetPassword] = useState('');
   const [resetLoading, setResetLoading] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
+
+  // Option Menu & Modals State
+  const [activeMenuKey, setActiveMenuKey] = useState<string | null>(null);
+
+  const [editModal, setEditModal] = useState<{
+    isOpen: boolean;
+    settingsType: 'deployment' | 'company';
+    fieldKey: string;
+    fieldLabel: string;
+    oldValue: string;
+    newValue: string;
+    loading: boolean;
+  }>({
+    isOpen: false,
+    settingsType: 'deployment',
+    fieldKey: '',
+    fieldLabel: '',
+    oldValue: '',
+    newValue: '',
+    loading: false
+  });
+
+  const [mergeModal, setMergeModal] = useState<{
+    isOpen: boolean;
+    settingsType: 'deployment' | 'company';
+    fieldKey: string;
+    fieldLabel: string;
+    sourceValue: string;
+    targetValue: string;
+    availableOptions: string[];
+    loading: boolean;
+  }>({
+    isOpen: false,
+    settingsType: 'deployment',
+    fieldKey: '',
+    fieldLabel: '',
+    sourceValue: '',
+    targetValue: '',
+    availableOptions: [],
+    loading: false
+  });
+
+  useEffect(() => {
+    const handleOutsideClick = () => setActiveMenuKey(null);
+    window.addEventListener('click', handleOutsideClick);
+    return () => window.removeEventListener('click', handleOutsideClick);
+  }, []);
+
+  const handleExecuteRenameOption = async () => {
+    const { settingsType, fieldKey, oldValue, newValue } = editModal;
+    if (!newValue.trim() || newValue.trim() === oldValue) return;
+
+    try {
+      setEditModal(prev => ({ ...prev, loading: true }));
+      const res = await renameFieldOption({
+        settings_type: settingsType,
+        field_key: fieldKey,
+        old_value: oldValue,
+        new_value: newValue.trim()
+      });
+
+      if (settingsType === 'deployment') {
+        setDeploymentSettings(res.settings);
+        setDeploymentHasChanges(false);
+      } else {
+        setCompanySettings(res.settings);
+        setCompanyHasChanges(false);
+      }
+
+      setMessage({
+        type: 'success',
+        text: `Option "${oldValue}" renamed to "${newValue.trim()}". ${res.updated_count} record(s) updated across database.`
+      });
+      setEditModal(prev => ({ ...prev, isOpen: false }));
+      setTimeout(() => setMessage(null), 5000);
+    } catch (err: any) {
+      setMessage({
+        type: 'error',
+        text: err?.response?.data?.detail || 'Failed to rename option.'
+      });
+    } finally {
+      setEditModal(prev => ({ ...prev, loading: false }));
+    }
+  };
+
+  const handleExecuteMergeOption = async () => {
+    const { settingsType, fieldKey, sourceValue, targetValue } = mergeModal;
+    if (!targetValue || sourceValue === targetValue) return;
+
+    try {
+      setMergeModal(prev => ({ ...prev, loading: true }));
+      const res = await mergeFieldOption({
+        settings_type: settingsType,
+        field_key: fieldKey,
+        source_value: sourceValue,
+        target_value: targetValue
+      });
+
+      if (settingsType === 'deployment') {
+        setDeploymentSettings(res.settings);
+        setDeploymentHasChanges(false);
+      } else {
+        setCompanySettings(res.settings);
+        setCompanyHasChanges(false);
+      }
+
+      setMessage({
+        type: 'success',
+        text: `Merged "${sourceValue}" into "${targetValue}". ${res.merged_count} record(s) updated across database.`
+      });
+      setMergeModal(prev => ({ ...prev, isOpen: false }));
+      setTimeout(() => setMessage(null), 5000);
+    } catch (err: any) {
+      setMessage({
+        type: 'error',
+        text: err?.response?.data?.detail || 'Failed to merge option.'
+      });
+    } finally {
+      setMergeModal(prev => ({ ...prev, loading: false }));
+    }
+  };
 
   // General Status & Loading
   const [loading, setLoading] = useState(true);
@@ -1118,44 +1244,110 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
                                   <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider">
                                     Allowed Values / Options ({field.options?.length || 0})
                                   </label>
-                                  <span className="text-[11px] text-slate-500">
-                                    Click &times; to remove an option
+                                  <span className="text-[11px] text-slate-500 font-medium">
+                                    Sorted Alphabetically
                                   </span>
                                 </div>
 
-                                <div className="flex flex-wrap gap-2 mb-2">
-                                  {(field.options || []).map((option) => {
-                                    const isCurrentDefault = field.default_value === option;
-                                    return (
-                                      <span
-                                        key={option}
-                                        className={`inline-flex items-center space-x-1.5 pl-3 pr-2 py-1 rounded-lg text-xs font-medium border transition-colors ${
-                                          isCurrentDefault
-                                            ? 'bg-blue-50 text-blue-800 border-blue-300 ring-1 ring-blue-400/40'
-                                            : 'bg-white text-slate-800 border-slate-300'
-                                        }`}
-                                      >
-                                        <span>{option}</span>
-                                        {isCurrentDefault && (
-                                          <span className="text-[10px] bg-blue-600 text-white px-1.5 py-0.2 rounded font-semibold">
-                                            Default
-                                          </span>
-                                        )}
-                                        <button
-                                          type="button"
-                                          onClick={() => handleRemoveDeploymentOption(field.key, option)}
-                                          className="text-slate-400 hover:text-red-600 p-0.5 rounded transition-colors ml-1 cursor-pointer"
+                                <div className="bg-white border border-slate-200 rounded-xl shadow-2xs divide-y divide-slate-100 overflow-hidden max-h-72 overflow-y-auto">
+                                  {(!field.options || field.options.length === 0) ? (
+                                    <div className="px-4 py-3 text-xs text-slate-400 italic">No allowed options configured.</div>
+                                  ) : (
+                                    [...(field.options || [])].sort((a, b) => a.localeCompare(b)).map((option) => {
+                                      const isCurrentDefault = field.default_value === option;
+                                      const menuKey = `deployment:${field.key}:${option}`;
+                                      const isMenuOpen = activeMenuKey === menuKey;
+
+                                      return (
+                                        <div
+                                          key={option}
+                                          className="flex items-center justify-between px-3.5 py-2.5 hover:bg-slate-50/80 transition-colors text-xs"
                                         >
-                                          &times;
-                                        </button>
-                                      </span>
-                                    );
-                                  })}
+                                          <div className="flex items-center space-x-2.5 min-w-0 pr-2">
+                                            <span className="font-semibold text-slate-800 truncate">{option}</span>
+                                            {isCurrentDefault && (
+                                              <span className="shrink-0 text-[10px] bg-blue-100 text-blue-800 border border-blue-200 px-2 py-0.5 rounded-full font-bold">
+                                                Default
+                                              </span>
+                                            )}
+                                          </div>
+
+                                          <div className="relative shrink-0" onClick={(e) => e.stopPropagation()}>
+                                            <button
+                                              type="button"
+                                              onClick={() => setActiveMenuKey(isMenuOpen ? null : menuKey)}
+                                              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 transition-colors cursor-pointer"
+                                              title="Action Menu"
+                                            >
+                                              <MoreVertical className="w-4 h-4" />
+                                            </button>
+
+                                            {isMenuOpen && (
+                                              <div className="absolute right-0 mt-1 w-36 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-30 animate-in fade-in zoom-in-95 duration-100">
+                                                <button
+                                                  type="button"
+                                                  onClick={() => {
+                                                    setActiveMenuKey(null);
+                                                    setEditModal({
+                                                      isOpen: true,
+                                                      settingsType: 'deployment',
+                                                      fieldKey: field.key,
+                                                      fieldLabel: field.label,
+                                                      oldValue: option,
+                                                      newValue: option,
+                                                      loading: false
+                                                    });
+                                                  }}
+                                                  className="w-full text-left px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-blue-50 hover:text-blue-600 flex items-center space-x-2 transition-colors cursor-pointer"
+                                                >
+                                                  <Pencil className="w-3.5 h-3.5 text-blue-500" />
+                                                  <span>Edit Name</span>
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  onClick={() => {
+                                                    setActiveMenuKey(null);
+                                                    setMergeModal({
+                                                      isOpen: true,
+                                                      settingsType: 'deployment',
+                                                      fieldKey: field.key,
+                                                      fieldLabel: field.label,
+                                                      sourceValue: option,
+                                                      targetValue: '',
+                                                      availableOptions: field.options || [],
+                                                      loading: false
+                                                    });
+                                                  }}
+                                                  className="w-full text-left px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-purple-50 hover:text-purple-600 flex items-center space-x-2 transition-colors cursor-pointer"
+                                                >
+                                                  <GitMerge className="w-3.5 h-3.5 text-purple-500" />
+                                                  <span>Merge Value</span>
+                                                </button>
+                                                <div className="my-1 border-t border-slate-100"></div>
+                                                <button
+                                                  type="button"
+                                                  onClick={() => {
+                                                    setActiveMenuKey(null);
+                                                    handleRemoveDeploymentOption(field.key, option);
+                                                  }}
+                                                  className="w-full text-left px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50 flex items-center space-x-2 transition-colors cursor-pointer"
+                                                >
+                                                  <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                                                  <span>Delete</span>
+                                                </button>
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
+                                      );
+                                    })
+                                  )}
 
                                   {field.allow_other && (
-                                    <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold bg-purple-50 text-purple-700 border border-purple-300 border-dashed">
-                                      + &ldquo;Other&rdquo; (Custom Write-in)
-                                    </span>
+                                    <div className="flex items-center justify-between px-3.5 py-2 bg-purple-50/60 border-t border-purple-100 text-xs">
+                                      <span className="font-semibold text-purple-800 italic">+ &ldquo;Other&rdquo; (Custom Write-in Enabled)</span>
+                                      <span className="text-[10px] text-purple-600 font-bold bg-purple-100 px-2 py-0.5 rounded-full">System Option</span>
+                                    </div>
                                   )}
                                 </div>
 
@@ -1763,44 +1955,110 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
                                     <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider">
                                       Allowed Values / Options ({field.options?.length || 0})
                                     </label>
-                                    <span className="text-[11px] text-slate-500">
-                                      Click &times; to remove an option
+                                    <span className="text-[11px] text-slate-500 font-medium">
+                                      Sorted Alphabetically
                                     </span>
                                   </div>
 
-                                  <div className="flex flex-wrap gap-2 mb-2">
-                                    {(field.options || []).map((option) => {
-                                      const isCurrentDefault = field.default_value === option;
-                                      return (
-                                        <span
-                                          key={option}
-                                          className={`inline-flex items-center space-x-1.5 pl-3 pr-2 py-1 rounded-lg text-xs font-medium border transition-colors ${
-                                            isCurrentDefault
-                                              ? 'bg-blue-50 text-blue-800 border-blue-300 ring-1 ring-blue-400/40'
-                                              : 'bg-white text-slate-800 border-slate-300'
-                                          }`}
-                                        >
-                                          <span>{option}</span>
-                                          {isCurrentDefault && (
-                                            <span className="text-[10px] bg-blue-600 text-white px-1.5 py-0.2 rounded font-semibold">
-                                              Default
-                                            </span>
-                                          )}
-                                          <button
-                                            type="button"
-                                            onClick={() => handleRemoveCompanyOption(field.key, option)}
-                                            className="text-slate-400 hover:text-red-600 p-0.5 rounded transition-colors ml-1 cursor-pointer"
+                                  <div className="bg-white border border-slate-200 rounded-xl shadow-2xs divide-y divide-slate-100 overflow-hidden max-h-72 overflow-y-auto">
+                                    {(!field.options || field.options.length === 0) ? (
+                                      <div className="px-4 py-3 text-xs text-slate-400 italic">No allowed options configured.</div>
+                                    ) : (
+                                      [...(field.options || [])].sort((a, b) => a.localeCompare(b)).map((option) => {
+                                        const isCurrentDefault = field.default_value === option;
+                                        const menuKey = `company:${field.key}:${option}`;
+                                        const isMenuOpen = activeMenuKey === menuKey;
+
+                                        return (
+                                          <div
+                                            key={option}
+                                            className="flex items-center justify-between px-3.5 py-2.5 hover:bg-slate-50/80 transition-colors text-xs"
                                           >
-                                            &times;
-                                          </button>
-                                        </span>
-                                      );
-                                    })}
+                                            <div className="flex items-center space-x-2.5 min-w-0 pr-2">
+                                              <span className="font-semibold text-slate-800 truncate">{option}</span>
+                                              {isCurrentDefault && (
+                                                <span className="shrink-0 text-[10px] bg-blue-100 text-blue-800 border border-blue-200 px-2 py-0.5 rounded-full font-bold">
+                                                  Default
+                                                </span>
+                                              )}
+                                            </div>
+
+                                            <div className="relative shrink-0" onClick={(e) => e.stopPropagation()}>
+                                              <button
+                                                type="button"
+                                                onClick={() => setActiveMenuKey(isMenuOpen ? null : menuKey)}
+                                                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 transition-colors cursor-pointer"
+                                                title="Action Menu"
+                                              >
+                                                <MoreVertical className="w-4 h-4" />
+                                              </button>
+
+                                              {isMenuOpen && (
+                                                <div className="absolute right-0 mt-1 w-36 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-30 animate-in fade-in zoom-in-95 duration-100">
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                      setActiveMenuKey(null);
+                                                      setEditModal({
+                                                        isOpen: true,
+                                                        settingsType: 'company',
+                                                        fieldKey: field.key,
+                                                        fieldLabel: field.label,
+                                                        oldValue: option,
+                                                        newValue: option,
+                                                        loading: false
+                                                      });
+                                                    }}
+                                                    className="w-full text-left px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-blue-50 hover:text-blue-600 flex items-center space-x-2 transition-colors cursor-pointer"
+                                                  >
+                                                    <Pencil className="w-3.5 h-3.5 text-blue-500" />
+                                                    <span>Edit Name</span>
+                                                  </button>
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                      setActiveMenuKey(null);
+                                                      setMergeModal({
+                                                        isOpen: true,
+                                                        settingsType: 'company',
+                                                        fieldKey: field.key,
+                                                        fieldLabel: field.label,
+                                                        sourceValue: option,
+                                                        targetValue: '',
+                                                        availableOptions: field.options || [],
+                                                        loading: false
+                                                      });
+                                                    }}
+                                                    className="w-full text-left px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-purple-50 hover:text-purple-600 flex items-center space-x-2 transition-colors cursor-pointer"
+                                                  >
+                                                    <GitMerge className="w-3.5 h-3.5 text-purple-500" />
+                                                    <span>Merge Value</span>
+                                                  </button>
+                                                  <div className="my-1 border-t border-slate-100"></div>
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                      setActiveMenuKey(null);
+                                                      handleRemoveCompanyOption(field.key, option);
+                                                    }}
+                                                    className="w-full text-left px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50 flex items-center space-x-2 transition-colors cursor-pointer"
+                                                  >
+                                                    <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                                                    <span>Delete</span>
+                                                  </button>
+                                                </div>
+                                              )}
+                                            </div>
+                                          </div>
+                                        );
+                                      })
+                                    )}
 
                                     {field.allow_other && (
-                                      <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold bg-purple-50 text-purple-700 border border-purple-300 border-dashed">
-                                        + &ldquo;Other&rdquo; (Custom Write-in)
-                                      </span>
+                                      <div className="flex items-center justify-between px-3.5 py-2 bg-purple-50/60 border-t border-purple-100 text-xs">
+                                        <span className="font-semibold text-purple-800 italic">+ &ldquo;Other&rdquo; (Custom Write-in Enabled)</span>
+                                        <span className="text-[10px] text-purple-600 font-bold bg-purple-100 px-2 py-0.5 rounded-full">System Option</span>
+                                      </div>
                                     )}
                                   </div>
 
@@ -2375,6 +2633,146 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
                 className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg shadow-sm transition-all cursor-pointer"
               >
                 Discard & Leave
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Edit Option Modal */}
+      {editModal.isOpen && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center space-x-3 mb-4">
+              <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl">
+                <Pencil className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Edit Option Name</h3>
+                <p className="text-xs text-slate-500">Field: {editModal.fieldLabel}</p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Current Name</label>
+                <input
+                  type="text"
+                  disabled
+                  value={editModal.oldValue}
+                  className="w-full px-3 py-2 text-xs bg-slate-100 border border-slate-200 rounded-lg text-slate-600 font-medium"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">New Name</label>
+                <input
+                  type="text"
+                  value={editModal.newValue}
+                  onChange={(e) => setEditModal((prev) => ({ ...prev, newValue: e.target.value }))}
+                  placeholder="Enter new option name..."
+                  className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-slate-800 font-semibold"
+                  autoFocus
+                />
+              </div>
+
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 space-y-1">
+                <span className="font-semibold block">⚠️ Cascade Update Notice</span>
+                <p>
+                  Renaming &ldquo;{editModal.oldValue}&rdquo; will automatically update <strong>ALL</strong> deployments and system records referencing this value across the database.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end space-x-3 mt-6">
+              <button
+                type="button"
+                onClick={() => setEditModal((prev) => ({ ...prev, isOpen: false }))}
+                disabled={editModal.loading}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleExecuteRenameOption}
+                disabled={editModal.loading || !editModal.newValue.trim() || editModal.newValue.trim() === editModal.oldValue}
+                className="px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-colors shadow-xs disabled:opacity-50 cursor-pointer flex items-center space-x-1.5"
+              >
+                {editModal.loading ? <span>Updating...</span> : <span>Save & Update Everywhere</span>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Merge Option Modal */}
+      {mergeModal.isOpen && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center space-x-3 mb-4">
+              <div className="p-2.5 bg-purple-50 text-purple-600 rounded-xl">
+                <GitMerge className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Merge Option</h3>
+                <p className="text-xs text-slate-500">Field: {mergeModal.fieldLabel}</p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Source Option (Being Merged)</label>
+                <input
+                  type="text"
+                  disabled
+                  value={mergeModal.sourceValue}
+                  className="w-full px-3 py-2 text-xs bg-slate-100 border border-slate-200 rounded-lg text-slate-600 font-medium"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Target Option (Merge Into)</label>
+                <select
+                  value={mergeModal.targetValue}
+                  onChange={(e) => setMergeModal((prev) => ({ ...prev, targetValue: e.target.value }))}
+                  className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 text-slate-800 font-semibold"
+                >
+                  <option value="">-- Select Target Option --</option>
+                  {mergeModal.availableOptions
+                    .filter((opt) => opt !== mergeModal.sourceValue)
+                    .sort((a, b) => a.localeCompare(b))
+                    .map((opt) => (
+                      <option key={opt} value={opt}>
+                        {opt}
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              <div className="p-3 bg-purple-50 border border-purple-200 rounded-xl text-xs text-purple-900 space-y-1">
+                <span className="font-semibold block">⚠️ Merge Migration Notice</span>
+                <p>
+                  Merging &ldquo;{mergeModal.sourceValue}&rdquo; will permanently remove it from allowed options. <strong>ALL</strong> existing deployments and records assigned to &ldquo;{mergeModal.sourceValue}&rdquo; will be updated to use &ldquo;{mergeModal.targetValue || 'the target value'}&rdquo;.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end space-x-3 mt-6">
+              <button
+                type="button"
+                onClick={() => setMergeModal((prev) => ({ ...prev, isOpen: false }))}
+                disabled={mergeModal.loading}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleExecuteMergeOption}
+                disabled={mergeModal.loading || !mergeModal.targetValue}
+                className="px-4 py-2 text-xs font-semibold text-white bg-purple-600 hover:bg-purple-700 rounded-xl transition-colors shadow-xs disabled:opacity-50 cursor-pointer flex items-center space-x-1.5"
+              >
+                {mergeModal.loading ? <span>Merging...</span> : <span>Confirm & Merge</span>}
               </button>
             </div>
           </div>

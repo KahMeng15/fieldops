@@ -704,6 +704,234 @@ async def reset_company_field_settings(
     sync_company_database_columns(db, DEFAULT_COMPANY_SETTINGS)
     return DEFAULT_COMPANY_SETTINGS
 
+class RenameOptionPayload(BaseModel):
+    settings_type: str = "deployment"
+    field_key: str
+    old_value: str
+    new_value: str
+
+class MergeOptionPayload(BaseModel):
+    settings_type: str = "deployment"
+    field_key: str
+    source_value: str
+    target_value: str
+
+def cascade_rename_value_in_db(db: Session, settings_type: str, field_key: str, old_value: str, new_value: str) -> int:
+    updated_count = 0
+    old_val_str = str(old_value).strip()
+    new_val_str = str(new_value).strip()
+    if not old_val_str or not new_val_str or old_val_str == new_val_str:
+        return 0
+
+    if settings_type == "deployment":
+        if field_key == "extra_item_options":
+            res = db.execute(
+                text("UPDATE deployment_extra_items SET item_name = :new_val WHERE item_name = :old_val"),
+                {"new_val": new_val_str, "old_val": old_val_str}
+            )
+            updated_count += res.rowcount
+        
+        col_res = db.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name = 'deployments'"))
+        cols = {row[0] for row in col_res}
+        
+        target_keys = ["lead_engineer", "assisting_engineers"] if field_key in ["lead_engineer", "assisting_engineers"] else [field_key]
+        
+        for fk in target_keys:
+            if fk in cols:
+                res = db.execute(
+                    text(f'UPDATE deployments SET "{fk}" = :new_val WHERE "{fk}" = :old_val'),
+                    {"new_val": new_val_str, "old_val": old_val_str}
+                )
+                updated_count += res.rowcount
+
+                matching_rows = db.execute(
+                    text(f'SELECT id, "{fk}" FROM deployments WHERE "{fk}" LIKE :pattern'),
+                    {"pattern": f"%{old_val_str}%"}
+                ).fetchall()
+                for row in matching_rows:
+                    dep_id, val = row[0], row[1]
+                    if val and val != old_val_str:
+                        parts = [p.strip() for p in val.split(",") if p.strip()]
+                        if old_val_str in parts:
+                            new_parts = []
+                            for p in parts:
+                                new_p = new_val_str if p == old_val_str else p
+                                if new_p not in new_parts:
+                                    new_parts.append(new_p)
+                            new_val_formatted = ", ".join(new_parts)
+                            if new_val_formatted != val:
+                                db.execute(
+                                    text(f'UPDATE deployments SET "{fk}" = :new_val WHERE id = :dep_id'),
+                                    {"new_val": new_val_formatted, "dep_id": dep_id}
+                                )
+                                updated_count += 1
+    elif settings_type == "company":
+        col_res = db.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name = 'companies'"))
+        cols = {row[0] for row in col_res}
+        if field_key in cols:
+            res = db.execute(
+                text(f'UPDATE companies SET "{field_key}" = :new_val WHERE "{field_key}" = :old_val'),
+                {"new_val": new_val_str, "old_val": old_val_str}
+            )
+            updated_count += res.rowcount
+
+    return updated_count
+
+def cascade_merge_value_in_db(db: Session, settings_type: str, field_key: str, source_value: str, target_value: str) -> int:
+    updated_count = 0
+    source_str = str(source_value).strip()
+    target_str = str(target_value).strip()
+    if not source_str or not target_str or source_str == target_str:
+        return 0
+
+    if settings_type == "deployment":
+        if field_key == "extra_item_options":
+            res = db.execute(
+                text("UPDATE deployment_extra_items SET item_name = :target_val WHERE item_name = :source_val"),
+                {"target_val": target_str, "source_val": source_str}
+            )
+            updated_count += res.rowcount
+        
+        col_res = db.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name = 'deployments'"))
+        cols = {row[0] for row in col_res}
+        
+        target_keys = ["lead_engineer", "assisting_engineers"] if field_key in ["lead_engineer", "assisting_engineers"] else [field_key]
+        
+        for fk in target_keys:
+            if fk in cols:
+                res = db.execute(
+                    text(f'UPDATE deployments SET "{fk}" = :target_val WHERE "{fk}" = :source_val'),
+                    {"target_val": target_str, "source_val": source_str}
+                )
+                updated_count += res.rowcount
+
+                matching_rows = db.execute(
+                    text(f'SELECT id, "{fk}" FROM deployments WHERE "{fk}" LIKE :pattern'),
+                    {"pattern": f"%{source_str}%"}
+                ).fetchall()
+                for row in matching_rows:
+                    dep_id, val = row[0], row[1]
+                    if val and val != source_str:
+                        parts = [p.strip() for p in val.split(",") if p.strip()]
+                        if source_str in parts:
+                            new_parts = []
+                            for p in parts:
+                                new_p = target_str if p == source_str else p
+                                if new_p not in new_parts:
+                                    new_parts.append(new_p)
+                            new_val_formatted = ", ".join(new_parts)
+                            if new_val_formatted != val:
+                                db.execute(
+                                    text(f'UPDATE deployments SET "{fk}" = :target_val WHERE id = :dep_id'),
+                                    {"target_val": new_val_formatted, "dep_id": dep_id}
+                                )
+                                updated_count += 1
+    elif settings_type == "company":
+        col_res = db.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name = 'companies'"))
+        cols = {row[0] for row in col_res}
+        if field_key in cols:
+            res = db.execute(
+                text(f'UPDATE companies SET "{field_key}" = :target_val WHERE "{field_key}" = :source_val'),
+                {"target_val": target_str, "source_val": source_str}
+            )
+            updated_count += res.rowcount
+
+    return updated_count
+
+@router.post("/rename-option")
+async def rename_field_option(
+    payload: RenameOptionPayload,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    user_role_name = current_user.role.name if current_user.role else ""
+    user_perms = current_user.role.permissions if current_user.role else []
+    if user_role_name != "admin" and not any(p in user_perms for p in ["manage_settings"]):
+        raise HTTPException(status_code=403, detail="Permission denied.")
+
+    cat_name = "deployment_field_settings" if payload.settings_type == "deployment" else "company_field_settings"
+    setting_cat = db.query(LookupCategory).filter_by(name=cat_name).first()
+    
+    if not setting_cat or not setting_cat.description:
+        raise HTTPException(status_code=404, detail="Settings not found.")
+
+    data = json.loads(setting_cat.description)
+    fields = data.get("fields", [])
+
+    is_engineer = payload.field_key in ["lead_engineer", "assisting_engineers"]
+    target_keys = ["lead_engineer", "assisting_engineers"] if is_engineer else [payload.field_key]
+
+    for f in fields:
+        if f.get("key") in target_keys:
+            opts = f.get("options", [])
+            if payload.old_value in opts:
+                f["options"] = [payload.new_value if o == payload.old_value else o for o in opts]
+            if f.get("default_value") == payload.old_value:
+                f["default_value"] = payload.new_value
+
+    if is_engineer:
+        sync_engineer_options(fields)
+
+    setting_cat.description = json.dumps(data)
+    db.commit()
+
+    sync_lookup_values(db, data)
+    
+    updated_count = cascade_rename_value_in_db(
+        db, payload.settings_type, payload.field_key, payload.old_value, payload.new_value
+    )
+    db.commit()
+
+    return {"success": True, "updated_count": updated_count, "settings": data}
+
+@router.post("/merge-option")
+async def merge_field_option(
+    payload: MergeOptionPayload,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    user_role_name = current_user.role.name if current_user.role else ""
+    user_perms = current_user.role.permissions if current_user.role else []
+    if user_role_name != "admin" and not any(p in user_perms for p in ["manage_settings"]):
+        raise HTTPException(status_code=403, detail="Permission denied.")
+
+    cat_name = "deployment_field_settings" if payload.settings_type == "deployment" else "company_field_settings"
+    setting_cat = db.query(LookupCategory).filter_by(name=cat_name).first()
+    
+    if not setting_cat or not setting_cat.description:
+        raise HTTPException(status_code=404, detail="Settings not found.")
+
+    data = json.loads(setting_cat.description)
+    fields = data.get("fields", [])
+
+    is_engineer = payload.field_key in ["lead_engineer", "assisting_engineers"]
+    target_keys = ["lead_engineer", "assisting_engineers"] if is_engineer else [payload.field_key]
+
+    for f in fields:
+        if f.get("key") in target_keys:
+            opts = f.get("options", [])
+            new_opts = [o for o in opts if o != payload.source_value]
+            if payload.target_value not in new_opts:
+                new_opts.append(payload.target_value)
+            f["options"] = new_opts
+            if f.get("default_value") == payload.source_value:
+                f["default_value"] = payload.target_value
+
+    if is_engineer:
+        sync_engineer_options(fields)
+
+    setting_cat.description = json.dumps(data)
+    db.commit()
+
+    sync_lookup_values(db, data)
+
+    merged_count = cascade_merge_value_in_db(
+        db, payload.settings_type, payload.field_key, payload.source_value, payload.target_value
+    )
+    db.commit()
+
+    return {"success": True, "merged_count": merged_count, "settings": data}
+
 DEFAULT_REGION_SETTINGS = [
     {"state": "Johor", "districts": ["Johor Bahru", "Batu Pahat", "Kluang"]},
     {"state": "Kedah", "districts": ["Alor Setar", "Sungai Petani", "Kulim"]},

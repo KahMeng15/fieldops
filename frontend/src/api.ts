@@ -623,4 +623,24 @@ export const resetDatabase = async (password: string): Promise<{ message: string
   return data;
 };
 
+export const renameFieldOption = async (payload: {
+  settings_type: 'deployment' | 'company';
+  field_key: string;
+  old_value: string;
+  new_value: string;
+}): Promise<{ success: boolean; updated_count: number; settings: any }> => {
+  const { data } = await api.post('/settings/rename-option', payload);
+  return data;
+};
+
+export const mergeFieldOption = async (payload: {
+  settings_type: 'deployment' | 'company';
+  field_key: string;
+  source_value: string;
+  target_value: string;
+}): Promise<{ success: boolean; merged_count: number; settings: any }> => {
+  const { data } = await api.post('/settings/merge-option', payload);
+  return data;
+};
+
 export default api;
