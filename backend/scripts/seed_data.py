@@ -59,8 +59,9 @@ def seed_data():
         else:
             print("Admin user already exists.")
 
-        # Seed sample deployments and credentials if few exist
-        if db.query(Deployment).filter(Deployment.deleted_at == None).count() < 3:
+        # Seed sample deployments and credentials ONLY if explicitly enabled via SEED_SAMPLE_DATA=true
+        seed_sample_data = os.getenv("SEED_SAMPLE_DATA", "false").lower() in ("true", "1", "yes")
+        if seed_sample_data and db.query(Deployment).filter(Deployment.deleted_at == None).count() < 3:
             print("Seeding initial sample deployments and encrypted credentials...")
             
             d1 = Deployment(
@@ -147,8 +148,6 @@ def seed_data():
 
             db.commit()
             print("Sample deployments and encrypted credentials successfully seeded.")
-        else:
-            print("Deployments already exist in database.")
             
     finally:
         db.close()
