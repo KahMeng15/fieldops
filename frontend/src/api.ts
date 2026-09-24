@@ -618,4 +618,9 @@ export const executeExcelImport = async (
   return data;
 };
 
+export const resetDatabase = async (password: string): Promise<{ message: string }> => {
+  const { data } = await api.post('/settings/reset-database', { password });
+  return data;
+};
+
 export default api;

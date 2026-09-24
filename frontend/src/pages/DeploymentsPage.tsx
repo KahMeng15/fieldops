@@ -13,19 +13,16 @@ import {
   Package,
   User,
   MoreVertical,
-  Pencil,
-  FileSpreadsheet
+  Pencil
 } from 'lucide-react';
 import { getDeployments, deleteDeployment, getDeploymentFieldSettings, type DeploymentData } from '../api';
 import NewDeploymentModal from '../components/NewDeploymentModal';
 import EditDeploymentModal from '../components/EditDeploymentModal';
-import ExcelImportModal from '../components/ExcelImportModal';
 
 export const DeploymentsPage = () => {
   const [deployments, setDeployments] = useState<DeploymentData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -132,13 +129,6 @@ export const DeploymentsPage = () => {
           </p>
         </div>
         <div className="flex items-center space-x-2 self-start sm:self-auto">
-          <button
-            onClick={() => setIsImportModalOpen(true)}
-            className="flex items-center space-x-2 px-3.5 py-2.5 text-sm font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg shadow-2xs transition-all cursor-pointer"
-          >
-            <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-            <span>Import Excel</span>
-          </button>
           <button
             onClick={() => setIsModalOpen(true)}
             className="flex items-center space-x-2 px-4 py-2.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm hover:shadow transition-all cursor-pointer"
@@ -399,15 +389,6 @@ export const DeploymentsPage = () => {
           }}
         />
       )}
-
-      {/* Excel / CSV Import Modal */}
-      <ExcelImportModal
-        isOpen={isImportModalOpen}
-        onClose={() => setIsImportModalOpen(false)}
-        onSuccess={() => {
-          fetchDeploymentsList();
-        }}
-      />
     </div>
   );
 };

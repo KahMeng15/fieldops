@@ -33,7 +33,12 @@ import {
   MessageSquare,
   AlertTriangle,
   Loader2,
-  UserCheck
+  UserCheck,
+  Target,
+  ChevronLeft,
+  ChevronRight,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import { 
   getDeployment, 
@@ -49,6 +54,7 @@ import {
   createDeploymentExtraItem,
   updateDeploymentExtraItem,
   deleteDeploymentExtraItem,
+  getLocations,
   type DeploymentData, 
   type CredentialData,
   type PhaseRemarkItem,
@@ -131,10 +137,13 @@ export const DeploymentDetailPage = () => {
   >(null);
 
   const [fieldSettings, setFieldSettings] = useState<any[]>([]);
+  const [locationOptions, setLocationOptions] = useState<string[]>([]);
   const [inlineEditingField, setInlineEditingField] = useState<string | null>(null);
   const [inlineEditingValue, setInlineEditingValue] = useState<any>('');
   const [isSavingInline, setIsSavingInline] = useState(false);
   const [inlineError, setInlineError] = useState<string | null>(null);
+  const [timelineViewMode, setTimelineViewMode] = useState<'focus' | 'vertical' | 'grid'>('focus');
+  const [isFocusCompressedExpanded, setIsFocusCompressedExpanded] = useState(false);
 
   // Extra Items State
   const [extraItems, setExtraItems] = useState<ExtraItem[]>([]);
@@ -368,6 +377,12 @@ export const DeploymentDetailPage = () => {
         setFieldSettings(settings.fields);
         const sf = settings.fields.find((f: any) => f.key === 'pre_poc_status');
         if (sf?.options?.length) setStatusOptions(sf.options);
+      }
+    }).catch(() => {});
+    getLocations().then((locs: any) => {
+      if (Array.isArray(locs)) {
+        const names = locs.map((l: any) => l.name).filter(Boolean);
+        setLocationOptions(Array.from(new Set(names)));
       }
     }).catch(() => {});
   }, [id]);
@@ -696,8 +711,8 @@ export const DeploymentDetailPage = () => {
 
       {/* 2-Column Side-by-Side Layout: Left 1/3 (Info), Right 2/3 (Credentials) */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 items-start">
-        {/* Left Column (1/3): Deployment Info Card */}
-        <div className="sm:col-span-1 space-y-6 min-w-0">
+        {/* Left Column (1/3): Deployment Info Card (Sticky on scroll) */}
+        <div className="sm:col-span-1 space-y-6 min-w-0 sticky top-20 self-start max-h-[calc(100vh-6rem)] overflow-y-auto">
           <div className="bg-white rounded-xl border border-slate-200/80 shadow-xs overflow-hidden">
             {/* Card Header */}
             <div className="p-5 border-b border-slate-100 flex items-start justify-between gap-3">
@@ -1018,9 +1033,34 @@ export const DeploymentDetailPage = () => {
                   <MapPin className="w-3.5 h-3.5 text-slate-400" />
                   <span>Datacenter / Location</span>
                 </div>
-                <div className="text-sm font-semibold text-slate-900 truncate">
-                  {deployment.location}
-                </div>
+                {inlineEditingField === 'location' ? (
+                  <div>
+                    <div className="pt-0.5">
+                      <SearchableSelect
+                        value={inlineEditingValue}
+                        onChange={(val) => {
+                          setInlineEditingValue(val);
+                          handleSaveInlineEdit('location', val);
+                        }}
+                        options={locationOptions}
+                        allowOther={true}
+                        placeholder="Select or type location..."
+                      />
+                    </div>
+                    {inlineError && <p className="text-xs text-red-600 mt-1">{inlineError}</p>}
+                  </div>
+                ) : (
+                  <div
+                    onClick={() => handleStartInlineEdit('location', deployment.location)}
+                    className="group flex items-center justify-between gap-2 p-1.5 -m-1.5 rounded-lg hover:bg-slate-50 border border-transparent hover:border-slate-200/80 cursor-pointer transition-all"
+                    title="Click to edit location"
+                  >
+                    <div className="text-sm font-semibold text-slate-900 truncate">
+                      {deployment.location || <span className="text-slate-400 font-normal italic">Click to set location...</span>}
+                    </div>
+                    <Pencil className="w-3 h-3 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                  </div>
+                )}
               </div>
 
               {/* Field 7: Internal Group */}
@@ -1185,34 +1225,94 @@ export const DeploymentDetailPage = () => {
                 )}
               </div>
 
-              {/* Field 8.7: Device Status & Collected */}
-              {(deployment.device_status || deployment.collected !== undefined) && (
-                <div className="space-y-2 pt-3">
-                  <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 flex items-center space-x-1.5">
-                    <Server className="w-3.5 h-3.5 text-slate-400" />
-                    <span>Hardware Status & Validation</span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    {deployment.device_status && (
-                      <div className="bg-slate-50 p-2 rounded-md border border-slate-200/70">
-                        <span className="text-[10px] uppercase text-slate-400 font-bold block">Device Status</span>
-                        <span className="font-semibold text-slate-800">{deployment.device_status}</span>
-                      </div>
-                    )}
-                    <div className="bg-slate-50 p-2 rounded-md border border-slate-200/70">
-                      <span className="text-[10px] uppercase text-slate-400 font-bold block">Equipment Collected</span>
-                      <span className={`font-bold ${deployment.collected ? 'text-emerald-700' : 'text-slate-500'}`}>
-                        {deployment.collected ? '✓ Yes (Collected)' : 'No'}
-                      </span>
-                    </div>
-                  </div>
-                  {deployment.validated_by && (
-                    <div className="text-xs text-slate-600">
-                      <span>Validated by: <strong className="font-semibold text-slate-800">{deployment.validated_by}</strong></span>
-                    </div>
-                  )}
+              {/* Field 8.7: Device Status */}
+              <div className="space-y-1 pt-3">
+                <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 flex items-center space-x-1.5">
+                  <Server className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Device Status</span>
                 </div>
-              )}
+                {inlineEditingField === 'device_status' ? (
+                  <div>
+                    <div className="pt-0.5">
+                      <SearchableSelect
+                        value={inlineEditingValue}
+                        onChange={(val) => {
+                          setInlineEditingValue(val);
+                          handleSaveInlineEdit('device_status', val);
+                        }}
+                        options={getFieldOptions('device_status', [
+                          'Initiated',
+                          'Box Received',
+                          'Box Allocated',
+                          'Box Prepared',
+                          'Deployment Pending',
+                          'Deployed / In Progress',
+                          'Pending Collection',
+                          'Collected',
+                          'Returned to Office',
+                          'In Storage',
+                          'Decommissioned'
+                        ])}
+                        allowOther={true}
+                        placeholder="Select or type device status..."
+                      />
+                    </div>
+                    {inlineError && <p className="text-xs text-red-600 mt-1">{inlineError}</p>}
+                  </div>
+                ) : (
+                  <div
+                    onClick={() => handleStartInlineEdit('device_status', deployment.device_status)}
+                    className="group flex items-center justify-between gap-2 p-1.5 -m-1.5 rounded-lg hover:bg-slate-50 border border-transparent hover:border-slate-200/80 cursor-pointer transition-all"
+                    title="Click to edit device status"
+                  >
+                    <div className="text-sm font-semibold text-slate-900 truncate">
+                      {deployment.device_status ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-slate-100 text-slate-800 border border-slate-200">
+                          {deployment.device_status}
+                        </span>
+                      ) : (
+                        <span className="text-slate-400 font-normal italic">Not set</span>
+                      )}
+                    </div>
+                    <Pencil className="w-3 h-3 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                  </div>
+                )}
+              </div>
+
+              {/* Field 8.8: Equipment Collected */}
+              <div className="space-y-1 pt-3">
+                <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 flex items-center space-x-1.5">
+                  <Package className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Equipment Collected (Physical)</span>
+                </div>
+                <div
+                  onClick={async () => {
+                    const nextState = !deployment.collected;
+                    await handleSaveInlineEdit('collected', nextState);
+                  }}
+                  className="group flex items-center justify-between gap-2 p-1.5 -m-1.5 rounded-lg hover:bg-slate-50 border border-transparent hover:border-slate-200/80 cursor-pointer transition-all"
+                  title="Click to toggle equipment collected status"
+                >
+                  <div className="flex items-center space-x-2">
+                    <span className={`inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-md text-xs font-semibold shadow-2xs transition-all ${
+                      deployment.collected
+                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-300 hover:bg-emerald-100'
+                        : 'bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100'
+                    }`}>
+                      {deployment.collected ? (
+                        <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                      ) : (
+                        <X className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                      )}
+                      <span>{deployment.collected ? 'Yes (Collected)' : 'No (Pending Collection)'}</span>
+                    </span>
+                    <span className="text-[11px] text-slate-400 italic font-normal opacity-0 group-hover:opacity-100 transition-opacity">
+                      (Click to toggle)
+                    </span>
+                  </div>
+                  <Pencil className="w-3 h-3 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                </div>
+              </div>
 
               {/* Field 9: Company Profile */}
               <div className="space-y-1 pt-3">
@@ -1432,21 +1532,26 @@ export const DeploymentDetailPage = () => {
                 const completedCount = stages.filter(s => getStageStatus(s) === 'complete').length;
                 const progressPercent = Math.round((completedCount / stages.length) * 100);
 
-                let lastCompletedIdx = -1;
-                stages.forEach((stg, i) => {
-                  if (getStageStatus(stg) === 'complete') lastCompletedIdx = i;
-                });
-
                 const handleStageStatusChange = async (targetStage: string, newStatus: string, autoFillPreceding: boolean = true) => {
                   const targetIdx = stages.indexOf(targetStage);
+                  if (targetIdx === -1) return;
                   const newMap = { ...stageStatuses };
 
-                  if (newStatus === 'complete' && autoFillPreceding && targetIdx !== -1) {
-                    for (let i = 0; i <= targetIdx; i++) {
-                      newMap[stages[i]] = 'complete';
+                  if (newStatus === 'complete') {
+                    if (autoFillPreceding) {
+                      for (let i = 0; i <= targetIdx; i++) {
+                        newMap[stages[i]] = 'complete';
+                      }
+                    } else {
+                      newMap[targetStage] = 'complete';
                     }
                   } else {
+                    // When setting a stage to incomplete (not_started or pending),
+                    // mark this stage and reset all succeeding stages to not_started
                     newMap[targetStage] = newStatus;
+                    for (let i = targetIdx + 1; i < stages.length; i++) {
+                      newMap[stages[i]] = 'not_started';
+                    }
                   }
 
                   try {
@@ -1481,49 +1586,124 @@ export const DeploymentDetailPage = () => {
 
                 return (
                   <div className="space-y-6">
-                    {/* Horizontal Stepper Track */}
-                    <div className="bg-white rounded-xl border border-slate-200/80 p-4 sm:p-5 shadow-2xs">
-                      <div className="relative overflow-x-auto pb-4 pt-2 no-scrollbar">
-                        <div className="min-w-max relative px-4">
-                          {/* Background Connector Line */}
-                          <div className="absolute top-4 left-8 right-8 h-1 bg-slate-200 -z-0 rounded-full" />
+                    {/* Refactored Progress & Timeline Track */}
+                    <div className="bg-white rounded-xl border border-slate-200/80 p-4 sm:p-6 shadow-2xs space-y-5">
+                      {/* Summary & View Toggle Bar */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
+                        <div className="flex items-center space-x-3">
+                          <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-sm shrink-0 border border-blue-200">
+                            {progressPercent}%
+                          </div>
+                          <div>
+                            <div className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                              Overall Timeline Completion
+                            </div>
+                            <div className="text-xs text-slate-500 mt-0.5">
+                              {completedCount} of {stages.length} stages completed
+                            </div>
+                          </div>
+                        </div>
 
-                          {/* Active Progress Connector Line */}
-                          {lastCompletedIdx >= 0 && (
-                            <div 
-                              className="absolute top-4 left-8 h-1 bg-emerald-500 -z-0 rounded-full transition-all duration-300"
-                              style={{ 
-                                width: `${stages.length > 1 ? (lastCompletedIdx / (stages.length - 1)) * 92 : 0}%` 
-                              }}
-                            />
-                          )}
+                        {/* View Switcher Tabs (Icon-only on constrained screens, text on xl+) */}
+                        <div className="flex items-center p-1 bg-slate-100 rounded-lg border border-slate-200 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setTimelineViewMode('focus');
+                              const pendingIdx = stages.findIndex(s => getStageStatus(s) === 'pending');
+                              const targetIdx = pendingIdx !== -1 ? pendingIdx : stages.findIndex(s => getStageStatus(s) === 'not_started');
+                              if (targetIdx !== -1 && stages[targetIdx]) {
+                                setSelectedPhase(stages[targetIdx]);
+                              }
+                            }}
+                            title="Focus View"
+                            className={`px-2.5 py-1.5 text-xs font-semibold rounded-md transition-all cursor-pointer flex items-center space-x-1.5 ${
+                              timelineViewMode === 'focus'
+                                ? 'bg-white text-blue-600 shadow-2xs font-bold'
+                                : 'text-slate-600 hover:text-slate-900'
+                            }`}
+                          >
+                            <Target className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                            <span className="hidden xl:inline">Focus View</span>
+                          </button>
 
-                          {/* Stage Nodes Track */}
-                          <div className="flex items-start justify-between gap-6 sm:gap-8 relative z-10">
-                            {stages.map((stgName, index) => {
-                              const stStatus = getStageStatus(stgName);
-                              const isSelected = selectedPhase === stgName;
-                              const isComplete = stStatus === 'complete';
-                              const isPending = stStatus === 'pending';
+                          <button
+                            type="button"
+                            onClick={() => setTimelineViewMode('vertical')}
+                            title="Vertical Stepper"
+                            className={`px-2.5 py-1.5 text-xs font-semibold rounded-md transition-all cursor-pointer flex items-center space-x-1.5 ${
+                              timelineViewMode === 'vertical'
+                                ? 'bg-white text-blue-600 shadow-2xs font-bold'
+                                : 'text-slate-600 hover:text-slate-900'
+                            }`}
+                          >
+                            <Layers className="w-3.5 h-3.5 shrink-0" />
+                            <span className="hidden xl:inline">Vertical Stepper</span>
+                          </button>
 
-                              return (
-                                <div 
-                                  key={stgName} 
-                                  className="flex flex-col items-center group relative min-w-[85px] max-w-[110px]"
-                                >
-                                  {/* Node Button */}
+                          <button
+                            type="button"
+                            onClick={() => setTimelineViewMode('grid')}
+                            title="Stage Cards"
+                            className={`px-2.5 py-1.5 text-xs font-semibold rounded-md transition-all cursor-pointer flex items-center space-x-1.5 ${
+                              timelineViewMode === 'grid'
+                                ? 'bg-white text-blue-600 shadow-2xs font-bold'
+                                : 'text-slate-600 hover:text-slate-900'
+                            }`}
+                          >
+                            <Package className="w-3.5 h-3.5 shrink-0" />
+                            <span className="hidden xl:inline">Stage Cards</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Top Overall Fill Progress Bar */}
+                      <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
+                        <div 
+                          className="bg-emerald-500 h-full transition-all duration-500 rounded-full" 
+                          style={{ width: `${progressPercent}%` }} 
+                        />
+                      </div>
+
+                      {/* MODE 1: VERTICAL STEPPER TIMELINE */}
+                      {timelineViewMode === 'vertical' && (
+                        <div className="relative pl-6 sm:pl-8 space-y-3 pt-2">
+                          {/* Continuous Vertical Connector Line */}
+                          <div className="absolute left-[15px] sm:left-[23px] top-4 bottom-6 w-0.5 bg-slate-200 -z-0" />
+
+                          {stages.map((stgName, index) => {
+                            const stStatus = getStageStatus(stgName);
+                            const isSelected = selectedPhase === stgName;
+                            const isComplete = stStatus === 'complete';
+                            const isPending = stStatus === 'pending';
+
+                            return (
+                              <div
+                                key={stgName}
+                                onClick={() => setSelectedPhase(stgName)}
+                                className={`group relative flex items-center justify-between p-3.5 rounded-xl border transition-all cursor-pointer ${
+                                  isSelected
+                                    ? 'bg-blue-50/80 border-blue-400 ring-2 ring-blue-500/20 shadow-xs'
+                                    : 'bg-white border-slate-200/80 hover:bg-slate-50 hover:border-slate-300'
+                                }`}
+                              >
+                                {/* Step Circle Badge */}
+                                <div className="flex items-center space-x-3.5 min-w-0">
                                   <button
                                     type="button"
-                                    onClick={() => handleNodeClick(stgName)}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleNodeClick(stgName);
+                                    }}
                                     disabled={statusUpdating}
-                                    title={`Click once: Pending | Double-click: Complete | Stage: ${stgName}`}
-                                    className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs transition-all cursor-pointer relative ${
+                                    className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs transition-all shrink-0 cursor-pointer -ml-8 sm:-ml-10.5 z-10 ${
                                       isComplete
                                         ? 'bg-emerald-600 text-white ring-4 ring-emerald-100 hover:bg-emerald-700 shadow-xs'
                                         : isPending
-                                        ? 'bg-blue-600 text-white ring-4 ring-blue-100 scale-110 shadow-md animate-pulse'
-                                        : 'bg-white border-2 border-slate-300 text-slate-500 hover:border-blue-400 group-hover:text-slate-800'
-                                    } ${isSelected ? 'ring-2 ring-offset-2 ring-blue-500' : ''}`}
+                                        ? 'bg-blue-600 text-white ring-4 ring-blue-100 scale-105 shadow-md animate-pulse'
+                                        : 'bg-white border-2 border-slate-300 text-slate-500 hover:border-blue-400'
+                                    }`}
+                                    title="Click once: Pending | Double-click: Complete"
                                   >
                                     {isComplete ? (
                                       <Check className="w-4 h-4 stroke-[2.5]" />
@@ -1534,65 +1714,318 @@ export const DeploymentDetailPage = () => {
                                     )}
                                   </button>
 
-                                  {/* Label & Selector */}
-                                  <div className="mt-2.5 text-center px-0.5 space-y-1">
-                                    <span 
-                                      className={`text-xs block font-semibold leading-tight transition-colors ${
-                                        isSelected
-                                          ? 'text-blue-700 font-bold underline decoration-blue-400 underline-offset-4'
-                                          : isComplete
-                                          ? 'text-slate-800 font-medium'
-                                          : isPending
-                                          ? 'text-blue-600 font-bold'
-                                          : 'text-slate-500 group-hover:text-slate-700'
-                                      }`}
-                                    >
-                                      {stgName}
-                                    </span>
-
-                                    {/* Status Selector Pill */}
-                                    <div className="pt-0.5" onClick={(e) => e.stopPropagation()}>
-                                      <select
-                                        value={stStatus}
-                                        disabled={statusUpdating}
-                                        onChange={(e) => {
-                                          e.stopPropagation();
-                                          handleStageStatusChange(stgName, e.target.value, e.target.value === 'complete');
-                                        }}
-                                        className={`text-[10px] font-semibold py-0.5 px-1.5 rounded-full border cursor-pointer focus:outline-none transition-colors ${
-                                          isComplete
-                                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                            : isPending
-                                            ? 'bg-blue-50 text-blue-700 border-blue-200 font-bold'
-                                            : 'bg-slate-100 text-slate-500 border-slate-200'
-                                        }`}
-                                      >
-                                        <option value="not_started">Not Started</option>
-                                        <option value="pending">Pending</option>
-                                        <option value="complete">Complete</option>
-                                      </select>
+                                  <div className="min-w-0 space-y-0.5">
+                                    <div className="flex items-center space-x-2">
+                                      <span className={`text-xs font-bold leading-tight ${
+                                        isSelected ? 'text-blue-900 font-extrabold' : isComplete ? 'text-slate-800 font-semibold' : isPending ? 'text-blue-600 font-bold' : 'text-slate-600'
+                                      }`}>
+                                        {index + 1}. {stgName}
+                                      </span>
+                                      {isSelected && (
+                                        <span className="px-2 py-0.5 text-[10px] font-semibold bg-blue-100 text-blue-700 rounded-full">
+                                          Selected Phase
+                                        </span>
+                                      )}
                                     </div>
                                   </div>
                                 </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      </div>
 
-                      {/* Progress Bar Summary Footer */}
-                      <div className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between text-xs text-slate-500 gap-2">
-                        <div className="flex items-center space-x-2">
-                          <span className="font-semibold text-slate-700">Overall Progress:</span>
-                          <div className="w-32 bg-slate-200 h-2 rounded-full overflow-hidden inline-block">
-                            <div className="bg-emerald-500 h-full transition-all duration-300" style={{ width: `${progressPercent}%` }} />
+                                {/* Status Selector Pill */}
+                                <div className="shrink-0 ml-3" onClick={(e) => e.stopPropagation()}>
+                                  <select
+                                    value={stStatus}
+                                    disabled={statusUpdating}
+                                    onChange={(e) => {
+                                      e.stopPropagation();
+                                      handleStageStatusChange(stgName, e.target.value, e.target.value === 'complete');
+                                    }}
+                                    className={`text-xs font-semibold py-1 px-2.5 rounded-lg border cursor-pointer focus:outline-none transition-colors ${
+                                      isComplete
+                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-300 font-bold'
+                                        : isPending
+                                        ? 'bg-blue-50 text-blue-700 border-blue-300 font-bold'
+                                        : 'bg-slate-100 text-slate-600 border-slate-300'
+                                    }`}
+                                  >
+                                    <option value="not_started">Not Started</option>
+                                    <option value="pending">Pending</option>
+                                    <option value="complete">Complete</option>
+                                  </select>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* MODE 2: STEP STAGE CARDS GRID */}
+                      {timelineViewMode === 'grid' && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
+                          {stages.map((stgName, index) => {
+                            const stStatus = getStageStatus(stgName);
+                            const isSelected = selectedPhase === stgName;
+                            const isComplete = stStatus === 'complete';
+                            const isPending = stStatus === 'pending';
+
+                            return (
+                              <div
+                                key={stgName}
+                                onClick={() => setSelectedPhase(stgName)}
+                                className={`p-3.5 rounded-xl border transition-all cursor-pointer space-y-3 ${
+                                  isSelected
+                                    ? 'bg-blue-50/80 border-blue-400 ring-2 ring-blue-500/20 shadow-xs'
+                                    : 'bg-white border-slate-200/80 hover:bg-slate-50 hover:border-slate-300'
+                                }`}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center space-x-2.5">
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleNodeClick(stgName);
+                                      }}
+                                      disabled={statusUpdating}
+                                      className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs transition-all shrink-0 cursor-pointer ${
+                                        isComplete
+                                          ? 'bg-emerald-600 text-white shadow-xs'
+                                          : isPending
+                                          ? 'bg-blue-600 text-white shadow-md animate-pulse'
+                                          : 'bg-white border-2 border-slate-300 text-slate-500'
+                                      }`}
+                                    >
+                                      {isComplete ? <Check className="w-3.5 h-3.5 stroke-[2.5]" /> : isPending ? <Clock className="w-3.5 h-3.5" /> : <span>{index + 1}</span>}
+                                    </button>
+                                    <span className="text-xs font-bold text-slate-800">
+                                      {index + 1}. {stgName}
+                                    </span>
+                                  </div>
+
+                                  <div onClick={(e) => e.stopPropagation()}>
+                                    <select
+                                      value={stStatus}
+                                      disabled={statusUpdating}
+                                      onChange={(e) => {
+                                        e.stopPropagation();
+                                        handleStageStatusChange(stgName, e.target.value, e.target.value === 'complete');
+                                      }}
+                                      className={`text-[11px] font-semibold py-0.5 px-2 rounded-lg border cursor-pointer focus:outline-none transition-colors ${
+                                        isComplete
+                                          ? 'bg-emerald-50 text-emerald-700 border-emerald-300 font-bold'
+                                          : isPending
+                                          ? 'bg-blue-50 text-blue-700 border-blue-300 font-bold'
+                                          : 'bg-slate-100 text-slate-600 border-slate-300'
+                                      }`}
+                                    >
+                                      <option value="not_started">Not Started</option>
+                                      <option value="pending">Pending</option>
+                                      <option value="complete">Complete</option>
+                                    </select>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* MODE 3: FOCUS VIEW */}
+                      {timelineViewMode === 'focus' && (() => {
+                        const activeStageIndex = (() => {
+                          const pendingIdx = stages.findIndex(s => getStageStatus(s) === 'pending');
+                          if (pendingIdx !== -1) return pendingIdx;
+                          const notStartedIdx = stages.findIndex(s => getStageStatus(s) === 'not_started');
+                          if (notStartedIdx !== -1) return notStartedIdx;
+                          return Math.max(0, stages.length - 1);
+                        })();
+
+                        const currentFocusedIndex = (() => {
+                          const idx = stages.indexOf(selectedPhase);
+                          return idx !== -1 ? idx : activeStageIndex;
+                        })();
+
+                        const focusedStageName = stages[currentFocusedIndex] || stages[0];
+                        const focusedStatus = getStageStatus(focusedStageName);
+
+                        return (
+                          <div className="space-y-4 pt-2 min-w-0">
+                            {/* Compressed Horizontal Stepper Strip */}
+                            <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3 space-y-2 overflow-hidden">
+                              <div className="flex items-center justify-between">
+                                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                                  All Stages (Compressed)
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => setIsFocusCompressedExpanded(!isFocusCompressedExpanded)}
+                                  className="text-xs text-blue-600 hover:text-blue-800 font-semibold flex items-center space-x-1 cursor-pointer shrink-0"
+                                >
+                                  <span>{isFocusCompressedExpanded ? 'Hide Full List' : `View All (${stages.length})`}</span>
+                                  {isFocusCompressedExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                                </button>
+                              </div>
+
+                              {/* Mini Horizontal Breadcrumb Bar */}
+                              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 max-w-full">
+                                {stages.map((stgName, idx) => {
+                                  const st = getStageStatus(stgName);
+                                  const isFocused = selectedPhase === stgName;
+                                  const isDone = st === 'complete';
+                                  const isPending = st === 'pending';
+
+                                  return (
+                                    <button
+                                      key={stgName}
+                                      type="button"
+                                      onClick={() => setSelectedPhase(stgName)}
+                                      className={`shrink-0 px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition-all cursor-pointer border ${
+                                        isFocused
+                                          ? 'bg-blue-600 text-white border-blue-700 shadow-xs ring-2 ring-blue-400/30 font-bold'
+                                          : isDone
+                                          ? 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
+                                          : isPending
+                                          ? 'bg-blue-50 text-blue-800 border-blue-300 hover:bg-blue-100 font-bold'
+                                          : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+                                      }`}
+                                      title={`Stage ${idx + 1}: ${stgName} (${st})`}
+                                    >
+                                      {isDone ? (
+                                        <Check className="w-3.5 h-3.5 stroke-[2.5] shrink-0" />
+                                      ) : isPending ? (
+                                        <Clock className="w-3.5 h-3.5 shrink-0" />
+                                      ) : (
+                                        <span className="text-[10px] font-bold opacity-75 shrink-0">{idx + 1}</span>
+                                      )}
+                                      <span className="truncate max-w-[130px]">{stgName}</span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+
+                              {/* Expanded Compressed Stages List */}
+                              {isFocusCompressedExpanded && (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 border-t border-slate-200/80 animate-in fade-in duration-150">
+                                  {stages.map((stgName, idx) => {
+                                    const st = getStageStatus(stgName);
+                                    const isFocused = selectedPhase === stgName;
+
+                                    return (
+                                      <div
+                                        key={stgName}
+                                        onClick={() => setSelectedPhase(stgName)}
+                                        className={`p-2 rounded-lg text-xs flex items-center justify-between border cursor-pointer transition-all ${
+                                          isFocused ? 'bg-blue-50 border-blue-400 font-bold text-blue-900' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                                        }`}
+                                      >
+                                        <div className="flex items-center space-x-2 truncate">
+                                          <span className="font-bold text-slate-400 w-4">{idx + 1}.</span>
+                                          <span className="truncate">{stgName}</span>
+                                        </div>
+                                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                          st === 'complete' ? 'bg-emerald-100 text-emerald-800' : st === 'pending' ? 'bg-blue-100 text-blue-800' : 'bg-slate-100 text-slate-600'
+                                        }`}>
+                                          {st === 'complete' ? 'Done' : st === 'pending' ? 'In Progress' : 'Not Started'}
+                                        </span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Focused Active Stage Hero Card */}
+                            <div className="bg-gradient-to-b from-blue-50/70 via-white to-white rounded-2xl border-2 border-blue-400/80 p-5 sm:p-6 shadow-xs space-y-5">
+                              {/* Pill: Current Progress */}
+                              <div className="flex items-center">
+                                <span className="px-3 py-1 text-[11px] font-extrabold bg-blue-100 text-blue-800 border border-blue-200 rounded-full uppercase tracking-wider flex items-center space-x-1.5 shadow-2xs">
+                                  <Target className="w-3.5 h-3.5 text-blue-600" />
+                                  <span>Current Progress</span>
+                                </span>
+                              </div>
+
+                              {/* Stage Title and Dropdown Below */}
+                              <div className="space-y-3">
+                                <h3 className="text-xl font-extrabold text-slate-900">
+                                  {currentFocusedIndex + 1}. {focusedStageName}
+                                </h3>
+
+                                {/* Status Dropdown Only (Below Stage Name) */}
+                                <div className="flex items-center space-x-2">
+                                  <span className="text-xs text-slate-500 font-semibold">Status:</span>
+                                  <select
+                                    value={focusedStatus}
+                                    disabled={statusUpdating}
+                                    onChange={(e) => {
+                                      handleStageStatusChange(focusedStageName, e.target.value, e.target.value === 'complete');
+                                    }}
+                                    className={`text-xs font-extrabold py-1.5 px-3 rounded-xl border shadow-2xs cursor-pointer focus:outline-none transition-colors ${
+                                      focusedStatus === 'complete'
+                                        ? 'bg-emerald-600 text-white border-emerald-700'
+                                        : focusedStatus === 'pending'
+                                        ? 'bg-blue-600 text-white border-blue-700'
+                                        : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+                                    }`}
+                                  >
+                                    <option value="not_started">Not Started</option>
+                                    <option value="pending">Pending / In Progress</option>
+                                    <option value="complete">Complete</option>
+                                  </select>
+                                </div>
+                              </div>
+
+                              {/* Navigation Controls: Prev on left, Page info centered, Next on right */}
+                              <div className="flex items-center justify-between pt-4 border-t border-blue-100">
+                                {/* Prev Button (Left Aligned) */}
+                                <div>
+                                  <button
+                                    type="button"
+                                    disabled={currentFocusedIndex === 0}
+                                    onClick={() => {
+                                      if (currentFocusedIndex > 0) {
+                                        setSelectedPhase(stages[currentFocusedIndex - 1]);
+                                      }
+                                    }}
+                                    className="px-3.5 py-1.5 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 disabled:opacity-40 rounded-xl transition-colors cursor-pointer flex items-center space-x-1.5 text-xs font-semibold shadow-2xs"
+                                    title="Previous Stage"
+                                  >
+                                    <ChevronLeft className="w-4 h-4" />
+                                    <span>Prev</span>
+                                  </button>
+                                </div>
+
+                                {/* Page Info (Center Aligned) */}
+                                <div className="text-xs font-bold text-slate-600 bg-slate-100 px-3.5 py-1 rounded-full border border-slate-200/80">
+                                  Stage {currentFocusedIndex + 1} of {stages.length}
+                                </div>
+
+                                {/* Next Button (Right Aligned) */}
+                                <div>
+                                  <button
+                                    type="button"
+                                    disabled={currentFocusedIndex === stages.length - 1}
+                                    onClick={() => {
+                                      if (currentFocusedIndex < stages.length - 1) {
+                                        setSelectedPhase(stages[currentFocusedIndex + 1]);
+                                      }
+                                    }}
+                                    className="px-3.5 py-1.5 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 disabled:opacity-40 rounded-xl transition-colors cursor-pointer flex items-center space-x-1.5 text-xs font-semibold shadow-2xs"
+                                    title="Next Stage"
+                                  >
+                                    <span>Next</span>
+                                    <ChevronRight className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
                           </div>
-                          <span className="font-bold text-slate-900">{progressPercent}%</span>
-                          <span className="text-slate-400">({completedCount} of {stages.length} stages)</span>
-                        </div>
-                        <div className="text-[11px] text-slate-400 italic">
-                          💡 Click once for Pending | Double-click for Complete
-                        </div>
+                        );
+                      })()}
+
+                      {/* Footer Info */}
+                      <div className="pt-3 border-t border-slate-100 flex justify-between items-center text-xs text-slate-500">
+                        <span className="text-[11px] text-slate-400 italic">
+                          Click stage row to select phase for remarks | Click status dropdown to update
+                        </span>
                       </div>
                     </div>
                   </div>

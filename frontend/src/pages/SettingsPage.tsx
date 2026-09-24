@@ -21,7 +21,8 @@ import {
   ChevronsUp,
   Building2,
   MapPin,
-  User
+  User,
+  FileSpreadsheet
 } from 'lucide-react';
 import { Link, useBlocker } from 'react-router-dom';
 import { 
@@ -38,8 +39,10 @@ import {
   type CompanyFieldsSettings,
   getStatesDistricts,
   updateStatesDistricts,
-  type StateDistrictItem
+  type StateDistrictItem,
+  resetDatabase
 } from '../api';
+import ExcelImportModal from '../components/ExcelImportModal';
 
 interface SettingsPageProps {
   type: 'user' | 'admin';
@@ -48,8 +51,8 @@ interface SettingsPageProps {
 export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
   const isAdmin = type === 'admin';
 
-  // Admin Active Tab: 'deployment' | 'company'
-  const [adminTab, setAdminTab] = useState<'deployment' | 'company' | 'regions'>('deployment');
+  // Admin Active Tab: 'deployment' | 'company' | 'regions' | 'data'
+  const [adminTab, setAdminTab] = useState<'deployment' | 'company' | 'regions' | 'data'>('deployment');
 
   // Deployment Settings State
   const [deploymentSettings, setDeploymentSettings] = useState<DeploymentFieldsSettings | null>(null);
@@ -98,12 +101,40 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
   const [newRegionDistrictInputs, setNewRegionDistrictInputs] = useState<Record<string, string>>({});
   const [newRegionStateInput, setNewRegionStateInput] = useState('');
 
+  // Data & System State
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [isResetModalOpen, setIsResetModalOpen] = useState(false);
+  const [resetPassword, setResetPassword] = useState('');
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
+
   // General Status & Loading
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // User Settings State
   const [currentUser, setCurrentUser] = useState<any>(null);
+
+  const handleExecuteDatabaseReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resetPassword) {
+      setResetError('Please enter your admin password.');
+      return;
+    }
+    try {
+      setResetLoading(true);
+      setResetError(null);
+      await resetDatabase(resetPassword);
+      setIsResetModalOpen(false);
+      setResetPassword('');
+      setMessage({ type: 'success', text: 'Database operational data reset successfully! All deployment records cleared.' });
+      setTimeout(() => setMessage(null), 5000);
+    } catch (err: any) {
+      setResetError(err?.response?.data?.detail || 'Failed to reset database. Please check your password.');
+    } finally {
+      setResetLoading(false);
+    }
+  };
 
   const hasAnyChanges = deploymentHasChanges || companyHasChanges;
 
@@ -750,6 +781,19 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
             >
               <MapPin className="w-4 h-4" />
               <span>Region Data</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setAdminTab('data')}
+              className={`flex-1 flex items-center justify-center space-x-2 py-2.5 px-4 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                adminTab === 'data'
+                  ? 'bg-white text-blue-600 shadow-xs ring-1 ring-slate-200/60'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+              }`}
+            >
+              <Database className="w-4 h-4" />
+              <span>Data & System</span>
             </button>
           </div>
 
@@ -2131,6 +2175,172 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================== SECTION 4: DATA & SYSTEM MAINTENANCE ==================== */}
+      {isAdmin && adminTab === 'data' && (
+        <div className="space-y-6 animate-in fade-in duration-300">
+          {/* Batch Data Import Card */}
+          <div className="bg-white border border-slate-200 rounded-xl p-5 sm:p-6 shadow-sm space-y-4">
+            <div className="flex items-start justify-between border-b border-slate-100 pb-4">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 border border-emerald-200">
+                  <FileSpreadsheet className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-slate-900">Excel / CSV Batch Import</h2>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Import customer deployments, companies, products, extra hardware items, and stage progress from spreadsheet files (.xlsx, .xls).
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pt-2">
+              <p className="text-xs text-slate-600 max-w-xl">
+                Upload an Excel file to preview rows, map spreadsheet headers to system database fields, set default value overrides, and batch import deployments into the system.
+              </p>
+
+              <button
+                type="button"
+                onClick={() => setIsImportModalOpen(true)}
+                className="flex items-center space-x-2 px-4 py-2.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-sm hover:shadow transition-all cursor-pointer shrink-0"
+              >
+                <FileSpreadsheet className="w-4 h-4" />
+                <span>Import Excel File...</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Reset Database Card (Danger Zone) */}
+          <div className="bg-white border border-red-200 rounded-xl p-5 sm:p-6 shadow-sm space-y-4">
+            <div className="flex items-start justify-between border-b border-red-100 pb-4">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-lg bg-red-50 text-red-600 flex items-center justify-center shrink-0 border border-red-200">
+                  <RotateCcw className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-slate-900">Danger Zone: Reset Operational Database</h2>
+                  <p className="text-xs text-red-600 mt-0.5 font-medium">
+                    Permanently purge operational data and restore system to clean state.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Resetting the database will permanently delete all operational records, including:
+              </p>
+              <ul className="text-xs text-slate-600 list-disc list-inside space-y-1 bg-slate-50 p-3 rounded-lg border border-slate-200 font-mono text-[11px]">
+                <li>All deployment records, stage progress, and timelines</li>
+                <li>All extra hardware accessories and loaned equipment items</li>
+                <li>All encrypted credentials and credential version history</li>
+                <li>All deployment phase remarks, audit activity logs, and config reports</li>
+              </ul>
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800 font-medium">
+                Note: User accounts, user roles, teams, company profiles, datacenter locations, and field customization settings will NOT be deleted.
+              </div>
+            </div>
+
+            <div className="pt-2 flex justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setResetPassword('');
+                  setResetError(null);
+                  setIsResetModalOpen(true);
+                }}
+                className="flex items-center space-x-2 px-4 py-2.5 text-xs font-semibold text-white bg-red-600 hover:bg-red-700 rounded-lg shadow-sm hover:shadow transition-all cursor-pointer"
+              >
+                <RotateCcw className="w-4 h-4" />
+                <span>Reset Database...</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Excel / CSV Import Modal */}
+      <ExcelImportModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        onSuccess={() => {
+          setMessage({ type: 'success', text: 'Excel import completed successfully!' });
+          setTimeout(() => setMessage(null), 4000);
+        }}
+      />
+
+      {/* Reset Database Password Confirmation Modal */}
+      {isResetModalOpen && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-md w-full p-6 animate-in zoom-in-95 duration-150 space-y-4">
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center text-red-600 shrink-0">
+                <AlertCircle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Confirm Database Reset</h3>
+                <p className="text-xs text-slate-500">Authorization required to perform system reset.</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed">
+              This action will permanently delete all deployment records, credentials, loaned items, and audit logs. Enter your administrator account password to authorize this action.
+            </p>
+
+            {resetError && (
+              <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg flex items-center space-x-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{resetError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleExecuteDatabaseReset} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                  Admin Password
+                </label>
+                <div className="relative">
+                  <input
+                    type="password"
+                    value={resetPassword}
+                    onChange={(e) => setResetPassword(e.target.value)}
+                    placeholder="Enter your admin password"
+                    autoFocus
+                    className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                  />
+                  <Lock className="w-4 h-4 text-slate-400 absolute right-3 top-2.5" />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end space-x-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsResetModalOpen(false)}
+                  disabled={resetLoading}
+                  className="px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={resetLoading || !resetPassword}
+                  className="px-4 py-2 text-xs font-semibold text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 rounded-lg shadow-sm transition-all cursor-pointer flex items-center space-x-1.5"
+                >
+                  {resetLoading ? (
+                    <span>Resetting...</span>
+                  ) : (
+                    <>
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>Confirm Reset</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

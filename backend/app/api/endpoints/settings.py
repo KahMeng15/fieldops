@@ -1,8 +1,14 @@
 import json
+from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 from app.db.base import get_db
-from app.models import LookupCategory, LookupValue, AuditLog, User
+from app.models import (
+    LookupCategory, LookupValue, AuditLog, User, 
+    DeploymentExtraItem, DeploymentPhaseRemark, CredentialVersion, 
+    Credential, ConfigReport, Reminder, LoanedItem, DeploymentEngineer, Deployment
+)
+from app.core.security import verify_password
 from app.api.deps import get_current_user
 from typing import Dict, Any, List
 
@@ -726,3 +732,55 @@ async def update_region_settings(
 
     db.commit()
     return payload
+
+
+class ResetDatabaseSchema(BaseModel):
+    password: str
+
+
+@router.post("/reset-database")
+async def reset_database(
+    payload: ResetDatabaseSchema,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    user_role_name = current_user.role.name if current_user.role else ""
+    if user_role_name != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only admins can reset the database."
+        )
+
+    is_valid_password = verify_password(payload.password, current_user.password_hash) if current_user.password_hash else False
+    if not is_valid_password:
+        admin_user = db.query(User).filter_by(username="admin").first()
+        if admin_user and admin_user.password_hash:
+            is_valid_password = verify_password(payload.password, admin_user.password_hash)
+
+    if not is_valid_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid admin password. Database reset authorization failed."
+        )
+
+    try:
+        db.query(DeploymentExtraItem).delete()
+        db.query(DeploymentPhaseRemark).delete()
+        db.query(CredentialVersion).delete()
+        db.query(Credential).delete()
+        db.query(ConfigReport).delete()
+        db.query(Reminder).delete()
+        db.query(LoanedItem).delete()
+        db.query(DeploymentEngineer).delete()
+        db.query(Deployment).delete()
+        db.query(AuditLog).delete()
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to reset database operational data: {str(e)}"
+        )
+
+    return {"message": "Database operational records reset successfully."}
+

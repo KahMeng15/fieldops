@@ -57,7 +57,9 @@ def seed_data():
             db.commit()
             print("Admin user created with username: admin, password: admin123")
         else:
-            print("Admin user already exists.")
+            admin_user.password_hash = get_password_hash("admin123")
+            db.commit()
+            print("Admin user password hash updated to admin123.")
 
         # Seed sample deployments and credentials ONLY if explicitly enabled via SEED_SAMPLE_DATA=true
         seed_sample_data = os.getenv("SEED_SAMPLE_DATA", "false").lower() in ("true", "1", "yes")
