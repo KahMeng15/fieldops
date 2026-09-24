@@ -27,6 +27,8 @@ def upgrade() -> None:
     dep_cols = [c['name'] for c in inspector.get_columns('deployments')]
     if 'custom_test' in dep_cols:
         op.drop_column('deployments', 'custom_test')
+    if 'account_owner' not in dep_cols:
+        op.add_column('deployments', sa.Column('account_owner', sa.String(), nullable=True))
 
     loc_cols = [c['name'] for c in inspector.get_columns('locations')]
     if 'district' not in loc_cols:
