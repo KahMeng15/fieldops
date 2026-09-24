@@ -32,7 +32,8 @@ import {
   FolderOpen,
   MessageSquare,
   AlertTriangle,
-  Loader2
+  Loader2,
+  UserCheck
 } from 'lucide-react';
 import { 
   getDeployment, 
@@ -379,7 +380,7 @@ export const DeploymentDetailPage = () => {
   const handleStartInlineEdit = (fieldKey: string, initialValue: any) => {
     setInlineEditingField(fieldKey);
     let val: any = '';
-    if (fieldKey === 'deployment_date') {
+    if (['deployment_date', 'kickoff_date', 'end_date'].includes(fieldKey)) {
       if (initialValue) {
         try {
           const d = new Date(initialValue);
@@ -417,7 +418,7 @@ export const DeploymentDetailPage = () => {
       } else {
         const strVal = typeof valToUse === 'string' ? valToUse : String(valToUse || '');
         const trimmed = strVal.trim();
-        if (fieldKey === 'deployment_date') {
+        if (['deployment_date', 'kickoff_date', 'end_date'].includes(fieldKey)) {
           payloadValue = trimmed ? new Date(trimmed).toISOString() : null;
         } else if (!trimmed) {
           payloadValue = null;
@@ -1104,8 +1105,88 @@ export const DeploymentDetailPage = () => {
                 )}
               </div>
 
-              {/* Field 8.5: Device Status & Collected */}
-              {(deployment.device_status || deployment.collected !== undefined || deployment.validated_by) && (
+              {/* Field 8.5: Kick-Off Date */}
+              <div className="space-y-1 pt-3">
+                <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 flex items-center space-x-1.5">
+                  <Calendar className="w-3.5 h-3.5 text-blue-500" />
+                  <span>Kick-Off Date</span>
+                </div>
+                {inlineEditingField === 'kickoff_date' ? (
+                  <div>
+                    <div className="flex items-center pt-0.5">
+                      <input
+                        type="date"
+                        autoFocus
+                        value={inlineEditingValue}
+                        onChange={(e) => setInlineEditingValue(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleSaveInlineEdit('kickoff_date');
+                          if (e.key === 'Escape') handleCancelInlineEdit();
+                        }}
+                        disabled={isSavingInline}
+                        className="w-full text-sm font-semibold text-slate-900 border border-blue-500 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                      />
+                      {renderInlineEditControls('kickoff_date')}
+                    </div>
+                    {inlineError && <p className="text-xs text-red-600 mt-1">{inlineError}</p>}
+                  </div>
+                ) : (
+                  <div
+                    onClick={() => handleStartInlineEdit('kickoff_date', deployment.kickoff_date)}
+                    className="group flex items-center justify-between gap-2 p-1.5 -m-1.5 rounded-lg hover:bg-slate-50 border border-transparent hover:border-slate-200/80 cursor-pointer transition-all"
+                    title="Click to edit kick-off date"
+                  >
+                    <div className="text-sm font-semibold text-slate-900 truncate">
+                      {deployment.kickoff_date ? formatDate(deployment.kickoff_date) : <span className="text-slate-400 font-normal italic">Not set</span>}
+                    </div>
+                    <Pencil className="w-3 h-3 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                  </div>
+                )}
+              </div>
+
+              {/* Field 8.6: Validated By */}
+              <div className="space-y-1 pt-3">
+                <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 flex items-center space-x-1.5">
+                  <UserCheck className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Validated By</span>
+                </div>
+                {inlineEditingField === 'validated_by' ? (
+                  <div>
+                    <div className="pt-0.5">
+                      <SearchableSelect
+                        value={inlineEditingValue}
+                        onChange={(val) => {
+                          setInlineEditingValue(val);
+                          handleSaveInlineEdit('validated_by', val);
+                        }}
+                        options={getFieldOptions('validated_by', [
+                          'Kah Meng',
+                          'Michael Chang',
+                          'Sarah Jenkins',
+                          'Alex Rivera'
+                        ])}
+                        allowOther={true}
+                        placeholder="Select or type validator name..."
+                      />
+                    </div>
+                    {inlineError && <p className="text-xs text-red-600 mt-1">{inlineError}</p>}
+                  </div>
+                ) : (
+                  <div
+                    onClick={() => handleStartInlineEdit('validated_by', deployment.validated_by)}
+                    className="group flex items-center justify-between gap-2 p-1.5 -m-1.5 rounded-lg hover:bg-slate-50 border border-transparent hover:border-slate-200/80 cursor-pointer transition-all"
+                    title="Click to edit validator"
+                  >
+                    <div className="text-sm font-semibold text-slate-900 truncate">
+                      {deployment.validated_by || <span className="text-slate-400 font-normal italic">Not validated</span>}
+                    </div>
+                    <Pencil className="w-3 h-3 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                  </div>
+                )}
+              </div>
+
+              {/* Field 8.7: Device Status & Collected */}
+              {(deployment.device_status || deployment.collected !== undefined) && (
                 <div className="space-y-2 pt-3">
                   <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 flex items-center space-x-1.5">
                     <Server className="w-3.5 h-3.5 text-slate-400" />

@@ -703,24 +703,64 @@ def parse_excel_bytes(file_bytes: bytes, filename: str):
     if has_subheaders:
         start_data_row = 2
         last_top_header = ""
+        prev_hdr = ""
         for i in range(max(len(row0), len(row1))):
             top = row0[i] if i < len(row0) else ""
             sub = row1[i] if i < len(row1) else ""
-            if top:
+            
+            if top and top.lower() in ["progress", "status", "phase"]:
                 last_top_header = top
-            else:
+            elif top:
+                last_top_header = top
+            elif last_top_header and last_top_header.lower() in ["progress", "status", "phase"]:
                 top = last_top_header
+            else:
+                top = ""
                 
             if top and sub and top.lower() != sub.lower():
-                headers.append(f"{top} -> {sub}")
+                hdr = f"{top} -> {sub}"
             elif sub:
-                headers.append(sub)
+                hdr = sub
             elif top:
-                headers.append(top)
+                hdr = top
             else:
-                headers.append(f"Column_{i+1}")
+                hdr = f"Column_{i+1}"
+
+            if hdr == "#":
+                if "product 2" in prev_hdr.lower():
+                    hdr = "Product 2 Qty"
+                elif "product" in prev_hdr.lower():
+                    hdr = "Product 1 Qty"
+                elif "add-on item 3" in prev_hdr.lower() or "addon item 3" in prev_hdr.lower():
+                    hdr = "Add-On Item 3 Qty"
+                elif "add-on item 2" in prev_hdr.lower() or "addon item 2" in prev_hdr.lower():
+                    hdr = "Add-On Item 2 Qty"
+                elif "add-on item" in prev_hdr.lower() or "addon item" in prev_hdr.lower():
+                    hdr = "Add-On Item 1 Qty"
+                else:
+                    hdr = f"{prev_hdr} Qty"
+
+            prev_hdr = hdr
+            headers.append(hdr)
     else:
-        headers = [h if h else f"Column_{i+1}" for i, h in enumerate(row0)]
+        prev_hdr = ""
+        for i, h in enumerate(row0):
+            hdr = h if h else f"Column_{i+1}"
+            if hdr == "#":
+                if "product 2" in prev_hdr.lower():
+                    hdr = "Product 2 Qty"
+                elif "product" in prev_hdr.lower():
+                    hdr = "Product 1 Qty"
+                elif "add-on item 3" in prev_hdr.lower() or "addon item 3" in prev_hdr.lower():
+                    hdr = "Add-On Item 3 Qty"
+                elif "add-on item 2" in prev_hdr.lower() or "addon item 2" in prev_hdr.lower():
+                    hdr = "Add-On Item 2 Qty"
+                elif "add-on item" in prev_hdr.lower() or "addon item" in prev_hdr.lower():
+                    hdr = "Add-On Item 1 Qty"
+                else:
+                    hdr = f"{prev_hdr} Qty"
+            prev_hdr = hdr
+            headers.append(hdr)
         
     data_rows = rows[start_data_row:]
     parsed_rows = []
@@ -745,25 +785,30 @@ def auto_match_headers(headers: List[str]) -> Dict[str, str]:
         elif "sales" in hl or "account owner" in hl or "sales person" in hl:
             mappings.setdefault("account_owner", h)
         elif "product 2" in hl:
-            mappings.setdefault("product_2", h)
-            if i + 1 < len(headers) and headers[i+1] == "#":
-                mappings.setdefault("product_2_qty", headers[i+1])
-        elif hl == "product" or "product 1" in hl:
-            mappings.setdefault("product_1", h)
-            if i + 1 < len(headers) and headers[i+1] == "#":
-                mappings.setdefault("product_1_qty", headers[i+1])
+            if "qty" in hl or "#" in hl:
+                mappings.setdefault("product_2_qty", h)
+            else:
+                mappings.setdefault("product_2", h)
+        elif "product 1" in hl or hl == "product" or "product name" in hl:
+            if "qty" in hl or "#" in hl:
+                mappings.setdefault("product_1_qty", h)
+            else:
+                mappings.setdefault("product_1", h)
         elif "add-on item 3" in hl or "addon item 3" in hl:
-            mappings.setdefault("addon_3_name", h)
-            if i + 1 < len(headers) and headers[i+1] == "#":
-                mappings.setdefault("addon_3_qty", headers[i+1])
+            if "qty" in hl or "#" in hl:
+                mappings.setdefault("addon_3_qty", h)
+            else:
+                mappings.setdefault("addon_3_name", h)
         elif "add-on item 2" in hl or "addon item 2" in hl:
-            mappings.setdefault("addon_2_name", h)
-            if i + 1 < len(headers) and headers[i+1] == "#":
-                mappings.setdefault("addon_2_qty", headers[i+1])
+            if "qty" in hl or "#" in hl:
+                mappings.setdefault("addon_2_qty", h)
+            else:
+                mappings.setdefault("addon_2_name", h)
         elif "add-on item" in hl or "addon item" in hl:
-            mappings.setdefault("addon_1_name", h)
-            if i + 1 < len(headers) and headers[i+1] == "#":
-                mappings.setdefault("addon_1_qty", headers[i+1])
+            if "qty" in hl or "#" in hl:
+                mappings.setdefault("addon_1_qty", h)
+            else:
+                mappings.setdefault("addon_1_name", h)
         elif "recieved date" in hl or "received date" in hl or "start date" in hl or hl == "start":
             mappings.setdefault("deployment_date", h)
         elif "kick-off date" in hl or "kickoff date" in hl:
@@ -818,6 +863,51 @@ async def preview_excel_import(
         "preview_rows": rows[:5]
     }
 
+DEPLOYMENT_STAGES_LIST = [
+    "Initiated", "Device Received", "Box Prepared", "Kick Off Meeting Done",
+    "Deployment in progress", "Preparing UAT/FAT/Documentation", "Waiting for signature", "Complete"
+]
+
+POC_STAGES_LIST = [
+    "Initiated", "Box allocated", "Box prepared", "Pre-POC Meeting Done",
+    "Deployment pending", "Deployment in progress", "Review Policy", "Collect Report",
+    "POC Complete", "Post POC Meeting", "Complete", "Change to deployment"
+]
+
+def build_stage_statuses_map(dep_type, pre_poc, poc, post_poc, kickoff_st, materials_st, uat_fat_st):
+    stages = POC_STAGES_LIST if dep_type == "POC" else DEPLOYMENT_STAGES_LIST
+    stage_map = {}
+    highest = 0
+
+    if dep_type == "POC":
+        p1 = (pre_poc or "").lower()
+        p2 = (poc or "").lower()
+        p3 = (post_poc or "").lower()
+        if p1 in ["done", "complete", "completed"]: highest = max(highest, 3)
+        elif p1 in ["in progress", "pending", "follow-up"]: stage_map["Pre-POC Meeting Done"] = "pending"
+        if p2 in ["done", "complete", "completed"]: highest = max(highest, 8)
+        elif p2 in ["in progress", "pending", "follow-up"]: stage_map["Deployment in progress"] = "pending"
+        if p3 in ["done", "complete", "completed"]: highest = max(highest, 10)
+        elif p3 in ["in progress", "pending", "follow-up"]: stage_map["Post POC Meeting"] = "pending"
+    else:
+        k1 = (kickoff_st or "").lower()
+        m1 = (materials_st or "").lower()
+        u1 = (uat_fat_st or "").lower()
+        if k1 in ["done", "complete", "completed"]: highest = max(highest, 3)
+        elif k1 in ["in progress", "pending", "follow-up"]: stage_map["Kick Off Meeting Done"] = "pending"
+        if m1 in ["done", "complete", "completed"]: highest = max(highest, 2)
+        elif m1 in ["in progress", "pending", "follow-up"]: stage_map["Box Prepared"] = "pending"
+        if u1 in ["done", "complete", "completed"]: highest = max(highest, 7)
+        elif u1 in ["in progress", "pending", "follow-up"]: stage_map["Preparing UAT/FAT/Documentation"] = "pending"
+
+    for i, st in enumerate(stages):
+        if i <= highest:
+            stage_map[st] = "complete"
+        elif st not in stage_map:
+            stage_map[st] = "not_started"
+
+    return stage_map
+
 def parse_dt(dt_str: str) -> Optional[datetime]:
     if not dt_str: return None
     dt_str = dt_str.replace(".000000", "").replace(".000", "").strip()
@@ -840,12 +930,14 @@ async def execute_excel_import(
     request: Request,
     file: UploadFile = File(...),
     mapping_json: str = Form(...),
+    defaults_json: Optional[str] = Form(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(["create_deployment"]))
 ):
     contents = await file.read()
     headers, rows = parse_excel_bytes(contents, file.filename or "file.xlsx")
     mapping = json.loads(mapping_json)
+    defaults = json.loads(defaults_json) if defaults_json else {}
 
     deployments_created = 0
     companies_created = 0
@@ -854,9 +946,16 @@ async def execute_excel_import(
 
     actual_db_cols = sync_orm_columns(db)
 
+    def get_val(key: str, default_fallback: str = "") -> str:
+        override = defaults.get(key, "").strip() if defaults.get(key) else ""
+        if override:
+            return override
+        col = mapping.get(key)
+        v = r.get(col, "").strip() if col else ""
+        return v if v else default_fallback
+
     for idx, r in enumerate(rows, start=1):
-        cust_col = mapping.get("customer_name")
-        cust_name = r.get(cust_col, "").strip() if cust_col else ""
+        cust_name = get_val("customer_name")
         if not cust_name:
             continue
 
@@ -871,91 +970,67 @@ async def execute_excel_import(
         # Products to create deployments for
         products_to_create = []
         
-        p1_col = mapping.get("product_1")
-        p1_qty_col = mapping.get("product_1_qty")
-        p1_name = r.get(p1_col, "").strip() if p1_col else ""
-        p1_qty = int(r.get(p1_qty_col, "1")) if p1_qty_col and r.get(p1_qty_col, "").isdigit() else 1
+        p1_name = get_val("product_1", "FieldOps Core Gateway")
+        p1_qty_str = get_val("product_1_qty", "1")
+        p1_qty = int(p1_qty_str) if p1_qty_str.isdigit() else 1
         
-        products_to_create.append({"product": p1_name or "FieldOps Core Gateway", "qty": p1_qty})
+        products_to_create.append({"product": p1_name, "qty": p1_qty})
 
-        p2_col = mapping.get("product_2")
-        p2_qty_col = mapping.get("product_2_qty")
-        p2_name = r.get(p2_col, "").strip() if p2_col else ""
+        p2_name = get_val("product_2")
         if p2_name:
-            p2_qty = int(r.get(p2_qty_col, "1")) if p2_qty_col and r.get(p2_qty_col, "").isdigit() else 1
+            p2_qty_str = get_val("product_2_qty", "1")
+            p2_qty = int(p2_qty_str) if p2_qty_str.isdigit() else 1
             products_to_create.append({"product": p2_name, "qty": p2_qty})
 
         # Add-On items
         addons = []
         for i in range(1, 4):
-            an_col = mapping.get(f"addon_{i}_name")
-            aq_col = mapping.get(f"addon_{i}_qty")
-            an_val = r.get(an_col, "").strip() if an_col else ""
+            an_val = get_val(f"addon_{i}_name")
             if an_val:
-                aq_val = int(r.get(aq_col, "1")) if aq_col and r.get(aq_col, "").isdigit() else 1
+                aq_str = get_val(f"addon_{i}_qty", "1")
+                aq_val = int(aq_str) if aq_str.isdigit() else 1
                 addons.append({"name": an_val, "qty": aq_val})
 
         # Base fields
-        acc_owner_col = mapping.get("account_owner")
-        acc_owner = r.get(acc_owner_col, "").strip() if acc_owner_col else None
+        acc_owner = get_val("account_owner") or None
         
-        start_dt_col = mapping.get("deployment_date")
-        start_dt = parse_dt(r.get(start_dt_col, "")) if start_dt_col else None
+        start_dt_str = get_val("deployment_date")
+        start_dt = parse_dt(start_dt_str) if start_dt_str else None
         
-        kickoff_dt_col = mapping.get("kickoff_date")
-        kickoff_dt = parse_dt(r.get(kickoff_dt_col, "")) if kickoff_dt_col else None
+        kickoff_dt_str = get_val("kickoff_date")
+        kickoff_dt = parse_dt(kickoff_dt_str) if kickoff_dt_str else None
         
-        end_dt_col = mapping.get("end_date")
-        end_dt = parse_dt(r.get(end_dt_col, "")) if end_dt_col else None
+        end_dt_str = get_val("end_date")
+        end_dt = parse_dt(end_dt_str) if end_dt_str else None
 
-        pre_poc_col = mapping.get("pre_poc_status")
-        pre_poc = r.get(pre_poc_col, "").strip() if pre_poc_col else None
+        pre_poc = get_val("pre_poc_status") or None
+        poc = get_val("poc_status") or None
+        post_poc = get_val("post_poc_status") or None
 
-        poc_col = mapping.get("poc_status")
-        poc = r.get(poc_col, "").strip() if poc_col else None
+        kickoff_st = get_val("kickoff_status") or None
+        materials_st = get_val("materials_status") or None
+        uat_fat_st = get_val("uat_fat_status") or None
 
-        post_poc_col = mapping.get("post_poc_status")
-        post_poc = r.get(post_poc_col, "").strip() if post_poc_col else None
+        dev_st = get_val("device_status") or None
 
-        kickoff_st_col = mapping.get("kickoff_status")
-        kickoff_st = r.get(kickoff_st_col, "").strip() if kickoff_st_col else None
+        collected_val = get_val("collected").lower()
+        collected_bool = collected_val in ["true", "1", "yes", "done", "physical"]
 
-        materials_st_col = mapping.get("materials_status")
-        materials_st = r.get(materials_st_col, "").strip() if materials_st_col else None
-
-        uat_fat_st_col = mapping.get("uat_fat_status")
-        uat_fat_st = r.get(uat_fat_st_col, "").strip() if uat_fat_st_col else None
-
-        dev_st_col = mapping.get("device_status")
-        dev_st = r.get(dev_st_col, "").strip() if dev_st_col else None
-
-        collected_col = mapping.get("collected")
-        collected_val = r.get(collected_col, "").strip().lower() if collected_col else ""
-        collected_bool = collected_val in ["true", "1", "yes", "done"]
-
-        folder_col = mapping.get("deployment_folder")
-        folder = r.get(folder_col, "").strip() if folder_col else None
-
-        lead_eng_col = mapping.get("lead_engineer")
-        lead_eng = r.get(lead_eng_col, "").strip() if lead_eng_col else None
-
-        assist_eng_col = mapping.get("assisting_engineers")
-        assist_eng = r.get(assist_eng_col, "").strip() if assist_eng_col else None
-
-        val_by_col = mapping.get("validated_by")
-        val_by = r.get(val_by_col, "").strip() if val_by_col else None
-
-        notes_col = mapping.get("notes")
-        notes_val = r.get(notes_col, "").strip() if notes_col else None
+        folder = get_val("deployment_folder") or None
+        lead_eng = get_val("lead_engineer") or None
+        assist_eng = get_val("assisting_engineers") or None
+        val_by = get_val("validated_by") or None
+        notes_val = get_val("notes") or None
 
         # Auto-detect deployment_type
-        dep_type_col = mapping.get("deployment_type")
-        dep_type = r.get(dep_type_col, "").strip() if dep_type_col else None
+        dep_type = get_val("deployment_type")
         if not dep_type:
             if pre_poc or poc or post_poc:
                 dep_type = "POC"
             else:
                 dep_type = "Deployment"
+
+        stage_st_map = build_stage_statuses_map(dep_type, pre_poc, poc, post_poc, kickoff_st, materials_st, uat_fat_st)
 
         # Create deployments
         for item_info in products_to_create:
@@ -967,6 +1042,7 @@ async def execute_excel_import(
                     product_quantity=item_info["qty"],
                     account_owner=acc_owner,
                     deployment_type=dep_type,
+                    stage_statuses=stage_st_map,
                     deployment_date=start_dt or datetime.utcnow(),
                     kickoff_date=kickoff_dt,
                     end_date=end_dt,

@@ -35,6 +35,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
   const [previewData, setPreviewData] = useState<ExcelImportPreviewResult | null>(null);
   const [mappings, setMappings] = useState<Record<string, string>>({});
+  const [defaults, setDefaults] = useState<Record<string, string>>({});
   const [isExecuting, setIsExecuting] = useState(false);
   const [importResult, setImportResult] = useState<ExcelImportExecuteResult | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -49,6 +50,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
       const res = await previewExcelImport(selectedFile);
       setPreviewData(res);
       setMappings(res.auto_mappings || {});
+      setDefaults({});
       setStep('mapping');
     } catch (err: any) {
       setErrorMsg(err?.response?.data?.detail || 'Failed to read Excel file. Please ensure it is a valid .xlsx, .xls, or .csv file.');
@@ -80,17 +82,29 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
     });
   };
 
+  const handleDefaultChange = (fieldKey: string, val: string) => {
+    setDefaults(prev => {
+      const updated = { ...prev };
+      if (!val) {
+        delete updated[fieldKey];
+      } else {
+        updated[fieldKey] = val;
+      }
+      return updated;
+    });
+  };
+
   const handleExecuteImport = async () => {
     if (!file) return;
-    if (!mappings.customer_name) {
-      setErrorMsg('Please map the Customer Name column before importing.');
+    if (!mappings.customer_name && !defaults.customer_name) {
+      setErrorMsg('Please map or set a default Customer Name before importing.');
       return;
     }
 
     try {
       setIsExecuting(true);
       setErrorMsg(null);
-      const res = await executeExcelImport(file, mappings);
+      const res = await executeExcelImport(file, mappings, defaults);
       setImportResult(res);
       setStep('result');
     } catch (err: any) {
@@ -206,11 +220,17 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                 </h4>
                 
                 <div className="border border-slate-200 rounded-xl overflow-hidden shadow-xs divide-y divide-slate-100 text-xs">
+                  <div className="p-2.5 bg-slate-100/70 font-semibold text-slate-600 grid grid-cols-12 gap-3 text-[11px] uppercase tracking-wider">
+                    <div className="col-span-4">FieldOps Target Field</div>
+                    <div className="col-span-4">Excel Column Header</div>
+                    <div className="col-span-4">Fixed / Default Value Override</div>
+                  </div>
                   {previewData.field_definitions.map((field) => {
                     const mappedValue = mappings[field.key] || '';
+                    const defaultValue = defaults[field.key] || '';
                     return (
-                      <div key={field.key} className="p-3 flex items-center justify-between gap-4 hover:bg-slate-50/60 transition-colors">
-                        <div className="w-1/2 space-y-0.5">
+                      <div key={field.key} className="p-3 grid grid-cols-12 gap-3 items-center hover:bg-slate-50/60 transition-colors">
+                        <div className="col-span-4 space-y-0.5">
                           <div className="flex items-center space-x-1.5">
                             <span className="font-semibold text-slate-900">{field.label}</span>
                             {field.required && (
@@ -220,7 +240,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                           <span className="text-[11px] text-slate-400 block font-mono">{field.key}</span>
                         </div>
 
-                        <div className="w-1/2">
+                        <div className="col-span-4">
                           <select
                             value={mappedValue}
                             onChange={(e) => handleMappingChange(field.key, e.target.value)}
@@ -229,10 +249,54 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                             <option value="">-- Ignore / Do Not Import --</option>
                             {previewData.headers.map((h) => (
                               <option key={h} value={h}>
-                                Excel Column: "{h}"
+                                Column: "{h}"
                               </option>
                             ))}
                           </select>
+                        </div>
+
+                        <div className="col-span-4">
+                          {field.key === 'deployment_type' ? (
+                            <select
+                              value={defaultValue}
+                              onChange={(e) => handleDefaultChange(field.key, e.target.value)}
+                              className="w-full text-xs text-slate-800 bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 font-medium"
+                            >
+                              <option value="">-- Auto-detect --</option>
+                              <option value="Deployment">Deployment</option>
+                              <option value="POC">POC</option>
+                            </select>
+                          ) : field.key === 'collected' ? (
+                            <select
+                              value={defaultValue}
+                              onChange={(e) => handleDefaultChange(field.key, e.target.value)}
+                              className="w-full text-xs text-slate-800 bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 font-medium"
+                            >
+                              <option value="">-- None --</option>
+                              <option value="true">Yes / Physical (True)</option>
+                              <option value="false">No (False)</option>
+                            </select>
+                          ) : field.key === 'device_status' ? (
+                            <select
+                              value={defaultValue}
+                              onChange={(e) => handleDefaultChange(field.key, e.target.value)}
+                              className="w-full text-xs text-slate-800 bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 font-medium"
+                            >
+                              <option value="">-- None --</option>
+                              <option value="On-Prem">On-Prem</option>
+                              <option value="Hosted">Hosted</option>
+                              <option value="In Warehouse">In Warehouse</option>
+                              <option value="Delivered">Delivered</option>
+                            </select>
+                          ) : (
+                            <input
+                              type="text"
+                              value={defaultValue}
+                              onChange={(e) => handleDefaultChange(field.key, e.target.value)}
+                              placeholder="Fixed default override..."
+                              className="w-full text-xs text-slate-800 bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 font-medium"
+                            />
+                          )}
                         </div>
                       </div>
                     );

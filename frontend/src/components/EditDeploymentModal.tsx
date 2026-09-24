@@ -42,6 +42,8 @@ export const EditDeploymentModal: React.FC<EditDeploymentModalProps> = ({
   const [assistingEngineers, setAssistingEngineers] = useState('');
   const [internalGroupName, setInternalGroupName] = useState('');
   const [deploymentDate, setDeploymentDate] = useState('');
+  const [kickoffDate, setKickoffDate] = useState('');
+  const [validatedBy, setValidatedBy] = useState('');
   const [deploymentFolder, setDeploymentFolder] = useState('');
   const [notes, setNotes] = useState('');
   const [customValues, setCustomValues] = useState<Record<string, string>>({});
@@ -69,7 +71,7 @@ export const EditDeploymentModal: React.FC<EditDeploymentModalProps> = ({
             'customer_name', 'location', 'deployed_product', 'deployment_date',
             'deployment_type', 'internal_group_name', 'account_owner',
             'lead_engineer', 'assisting_engineers', 'pre_poc_status', 'notes',
-            'deployment_folder'
+            'deployment_folder', 'kickoff_date', 'validated_by'
           ]);
           const initialCustom: Record<string, string> = {};
           settingsData.fields
@@ -98,6 +100,7 @@ export const EditDeploymentModal: React.FC<EditDeploymentModalProps> = ({
       setLeadEngineer(deployment.lead_engineer || '');
       setAssistingEngineers(deployment.assisting_engineers || '');
       setInternalGroupName(deployment.internal_group_name || '');
+      setValidatedBy(deployment.validated_by || '');
       
       if (deployment.deployment_date) {
         try {
@@ -112,6 +115,21 @@ export const EditDeploymentModal: React.FC<EditDeploymentModalProps> = ({
         }
       } else {
         setDeploymentDate('');
+      }
+
+      if (deployment.kickoff_date) {
+        try {
+          const d = new Date(deployment.kickoff_date);
+          if (!isNaN(d.getTime())) {
+            setKickoffDate(d.toISOString().split('T')[0]);
+          } else {
+            setKickoffDate('');
+          }
+        } catch {
+          setKickoffDate('');
+        }
+      } else {
+        setKickoffDate('');
       }
 
       setDeploymentFolder(deployment.deployment_folder || '');
@@ -150,6 +168,8 @@ export const EditDeploymentModal: React.FC<EditDeploymentModalProps> = ({
         assisting_engineers: assistingEngineers.trim() || undefined,
         internal_group_name: internalGroupName.trim() || undefined,
         deployment_date: deploymentDate ? new Date(deploymentDate).toISOString() : undefined,
+        kickoff_date: kickoffDate ? new Date(kickoffDate).toISOString() : undefined,
+        validated_by: validatedBy.trim() || undefined,
         deployment_folder: deploymentFolder.trim() || undefined,
         notes: notes.trim() || undefined,
       };
@@ -361,6 +381,38 @@ export const EditDeploymentModal: React.FC<EditDeploymentModalProps> = ({
                   value={deploymentDate}
                   onChange={e => setDeploymentDate(e.target.value)}
                   className="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                />
+              </div>
+            </div>
+
+            {/* Kick-Off Date */}
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                Kick-Off Date
+              </label>
+              <div className="relative">
+                <Calendar className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+                <input
+                  type="date"
+                  value={kickoffDate}
+                  onChange={e => setKickoffDate(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                />
+              </div>
+            </div>
+
+            {/* Validated By */}
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                Validated By
+              </label>
+              <div className="pl-8">
+                <SearchableSelect
+                  value={validatedBy}
+                  onChange={(v) => setValidatedBy(v as string)}
+                  options={getField('validated_by')?.options || ['Kah Meng', 'Michael Chang', 'Sarah Jenkins', 'Alex Rivera']}
+                  allowOther={getField('validated_by')?.allow_other ?? true}
+                  placeholder="e.g. Kah Meng"
                 />
               </div>
             </div>

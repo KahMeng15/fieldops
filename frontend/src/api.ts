@@ -601,10 +601,17 @@ export const previewExcelImport = async (file: File): Promise<ExcelImportPreview
   return data;
 };
 
-export const executeExcelImport = async (file: File, mapping: Record<string, string>): Promise<ExcelImportExecuteResult> => {
+export const executeExcelImport = async (
+  file: File, 
+  mapping: Record<string, string>,
+  defaults?: Record<string, string>
+): Promise<ExcelImportExecuteResult> => {
   const formData = new FormData();
   formData.append('file', file);
   formData.append('mapping_json', JSON.stringify(mapping));
+  if (defaults) {
+    formData.append('defaults_json', JSON.stringify(defaults));
+  }
   const { data } = await api.post('/deployments/import-excel/execute', formData, {
     headers: { 'Content-Type': 'multipart/form-data' }
   });
