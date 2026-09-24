@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { SearchableSelect } from '../components/SearchableSelect';
 import { useParams, Link, useNavigate, useBlocker } from 'react-router-dom';
 import { 
@@ -61,9 +61,37 @@ import CredentialAccessLogsModal from '../components/CredentialAccessLogsModal';
 import PhaseRemarksHistoryModal from '../components/PhaseRemarksHistoryModal';
 import CredentialVersionsModal from '../components/CredentialVersionsModal';
 
+const DEPLOYMENT_STAGES = [
+  'Initiated',
+  'Device Received',
+  'Box Prepared',
+  'Kick Off Meeting Done',
+  'Deployment in progress',
+  'Preparing UAT/FAT/Documentation',
+  'Waiting for signature',
+  'Complete'
+];
+
+const POC_STAGES = [
+  'Initiated',
+  'Box allocated',
+  'Box prepared',
+  'Pre-POC Meeting Done',
+  'Deployment pending',
+  'Deployment in progress',
+  'Review Policy',
+  'Collect Report',
+  'POC Complete',
+  'Post POC Meeting',
+  'Complete',
+  'Change to deployment'
+];
+
 export const DeploymentDetailPage = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+
+  const clickTimeoutRef = useRef<{ [stageName: string]: any }>({});
 
   const [deployment, setDeployment] = useState<DeploymentData | null>(null);
   const [credentials, setCredentials] = useState<CredentialData[]>([]);
@@ -95,7 +123,7 @@ export const DeploymentDetailPage = () => {
   const [isPhaseRemarksHistoryModalOpen, setIsPhaseRemarksHistoryModalOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState<
     | { type: 'NAVIGATION' }
-    | { type: 'CHANGE_STATUS'; status: string }
+    | { type: 'CHANGE_STATUS'; status: string; stageKey?: string }
     | { type: 'CANCEL_EDIT' }
     | { type: 'VIEW_HISTORY' }
     | null
@@ -152,10 +180,14 @@ export const DeploymentDetailPage = () => {
   }, []);
 
   useEffect(() => {
-    if (deployment?.pre_poc_status) {
-      setSelectedPhase(deployment.pre_poc_status);
+    if (deployment) {
+      if (deployment.deployment_type === 'POC') {
+        setSelectedPhase('Pre-PoC');
+      } else {
+        setSelectedPhase('Kick-Off');
+      }
     }
-  }, [deployment?.pre_poc_status]);
+  }, [deployment?.deployment_type]);
 
   useEffect(() => {
     setIsEditingRemark(false);
@@ -436,28 +468,17 @@ export const DeploymentDetailPage = () => {
     </div>
   );
 
-  const executeStatusChange = async (newStatus: string) => {
+  const executeStatusChange = async (stageKey: string, newStatus: string) => {
     if (!id || !deployment) return;
     try {
       setStatusUpdating(true);
-      const updated = await updateDeployment(id, { pre_poc_status: newStatus });
+      const updated = await updateDeployment(id, { [stageKey]: newStatus });
       setDeployment((prev: any) => prev ? { ...prev, ...updated } : updated);
-      setSelectedPhase(newStatus);
-      fetchPhaseRemarks(newStatus);
     } catch (err) {
-      alert('Failed to update deployment status');
+      alert('Failed to update stage status');
     } finally {
       setStatusUpdating(false);
     }
-  };
-
-  const handleStatusChange = async (newStatus: string) => {
-    if (!id || !deployment) return;
-    if (hasUnsavedChanges && newStatus !== selectedPhase) {
-      setPendingAction({ type: 'CHANGE_STATUS', status: newStatus });
-      return;
-    }
-    await executeStatusChange(newStatus);
   };
 
   const handleConfirmSaveAndProceed = async () => {
@@ -477,7 +498,7 @@ export const DeploymentDetailPage = () => {
       if (pendingAction.type === 'NAVIGATION') {
         blocker.proceed?.();
       } else if (pendingAction.type === 'CHANGE_STATUS') {
-        await executeStatusChange(pendingAction.status);
+        await executeStatusChange(pendingAction.stageKey || 'pre_poc_status', pendingAction.status);
       } else if (pendingAction.type === 'VIEW_HISTORY') {
         setIsPhaseRemarksHistoryModalOpen(true);
       }
@@ -497,7 +518,7 @@ export const DeploymentDetailPage = () => {
     if (pendingAction.type === 'NAVIGATION') {
       blocker.proceed?.();
     } else if (pendingAction.type === 'CHANGE_STATUS') {
-      executeStatusChange(pendingAction.status);
+      executeStatusChange(pendingAction.stageKey || 'pre_poc_status', pendingAction.status);
     } else if (pendingAction.type === 'VIEW_HISTORY') {
       setIsPhaseRemarksHistoryModalOpen(true);
     }
@@ -1043,11 +1064,11 @@ export const DeploymentDetailPage = () => {
                 )}
               </div>
 
-              {/* Field 8: Deployment Date */}
+              {/* Field 8: Deployment & End Dates */}
               <div className="space-y-1 pt-3">
                 <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 flex items-center space-x-1.5">
                   <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Deployment Date</span>
+                  <span>Deployment & End Dates</span>
                 </div>
                 {inlineEditingField === 'deployment_date' ? (
                   <div>
@@ -1076,11 +1097,41 @@ export const DeploymentDetailPage = () => {
                   >
                     <div className="text-sm font-semibold text-slate-900 truncate">
                       {formatDate(deployment.deployment_date || deployment.created_at)}
+                      {deployment.end_date ? ` → ${formatDate(deployment.end_date)}` : ''}
                     </div>
                     <Pencil className="w-3 h-3 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
                   </div>
                 )}
               </div>
+
+              {/* Field 8.5: Device Status & Collected */}
+              {(deployment.device_status || deployment.collected !== undefined || deployment.validated_by) && (
+                <div className="space-y-2 pt-3">
+                  <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 flex items-center space-x-1.5">
+                    <Server className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Hardware Status & Validation</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    {deployment.device_status && (
+                      <div className="bg-slate-50 p-2 rounded-md border border-slate-200/70">
+                        <span className="text-[10px] uppercase text-slate-400 font-bold block">Device Status</span>
+                        <span className="font-semibold text-slate-800">{deployment.device_status}</span>
+                      </div>
+                    )}
+                    <div className="bg-slate-50 p-2 rounded-md border border-slate-200/70">
+                      <span className="text-[10px] uppercase text-slate-400 font-bold block">Equipment Collected</span>
+                      <span className={`font-bold ${deployment.collected ? 'text-emerald-700' : 'text-slate-500'}`}>
+                        {deployment.collected ? '✓ Yes (Collected)' : 'No'}
+                      </span>
+                    </div>
+                  </div>
+                  {deployment.validated_by && (
+                    <div className="text-xs text-slate-600">
+                      <span>Validated by: <strong className="font-semibold text-slate-800">{deployment.validated_by}</strong></span>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Field 9: Company Profile */}
               <div className="space-y-1 pt-3">
@@ -1270,152 +1321,212 @@ export const DeploymentDetailPage = () => {
             </div>
 
             {/* Stepper Timeline Body */}
-            <div className="p-5 sm:p-6 bg-slate-50/50">
+            <div className="p-5 sm:p-6 bg-slate-50/50 space-y-6">
               {(() => {
-                const rawStatus = deployment.pre_poc_status || 'Planning';
-                const statusAliases: Record<string, string> = {
-                  Active: 'In Progress',
+                const isPoc = deployment.deployment_type === 'POC';
+                const stages = isPoc ? POC_STAGES : DEPLOYMENT_STAGES;
+                const stageStatuses = deployment.stage_statuses || {};
+
+                const getStageStatus = (stgName: string): 'complete' | 'pending' | 'not_started' => {
+                  if (stageStatuses[stgName]) {
+                    const val = stageStatuses[stgName].toLowerCase();
+                    if (val === 'complete' || val === 'done' || val === 'completed') return 'complete';
+                    if (val === 'pending' || val === 'in progress' || val === 'in_progress') return 'pending';
+                    return 'not_started';
+                  }
+                  // Fallbacks if stage_statuses map isn't set yet for this key
+                  if (isPoc) {
+                    if (stgName === 'Pre-POC Meeting Done' && ['done', 'complete'].includes((deployment.pre_poc_status || '').toLowerCase())) return 'complete';
+                    if (stgName === 'Deployment in progress' && ['done', 'complete', 'in progress'].includes((deployment.poc_status || '').toLowerCase())) return deployment.poc_status === 'Done' ? 'complete' : 'pending';
+                    if (stgName === 'Post POC Meeting' && ['done', 'complete'].includes((deployment.post_poc_status || '').toLowerCase())) return 'complete';
+                  } else {
+                    if (stgName === 'Kick Off Meeting Done' && ['done', 'complete'].includes((deployment.kickoff_status || '').toLowerCase())) return 'complete';
+                    if (stgName === 'Box Prepared' && ['done', 'complete'].includes((deployment.materials_status || '').toLowerCase())) return 'complete';
+                    if (stgName === 'Preparing UAT/FAT/Documentation' && ['done', 'complete'].includes((deployment.uat_fat_status || '').toLowerCase())) return 'complete';
+                  }
+                  if (stgName === 'Initiated') return 'complete';
+                  return 'not_started';
                 };
-                const currentStatus = statusOptions.includes(rawStatus)
-                  ? rawStatus
-                  : statusAliases[rawStatus] && statusOptions.includes(statusAliases[rawStatus])
-                  ? statusAliases[rawStatus]
-                  : rawStatus;
-                const currentStepIndex = Math.max(0, statusOptions.indexOf(currentStatus));
-                const isCancelled = currentStatus === 'Cancelled';
-                const cancelledIsFirst = statusOptions[0] === 'Cancelled';
-                const normalSteps = statusOptions.filter(s => s !== 'Cancelled');
-                const currentNormalIndex = normalSteps.indexOf(currentStatus);
-                const progressPercent = isCancelled 
-                  ? 0 
-                  : currentNormalIndex >= 0 && normalSteps.length > 1
-                  ? Math.round((currentNormalIndex / (normalSteps.length - 1)) * 100)
-                  : 0;
-                const segmentColor = 
-                  currentStatus === 'Completed' 
-                    ? 'bg-emerald-600' 
-                    : currentStatus === 'On Hold' 
-                    ? 'bg-amber-500' 
-                    : 'bg-blue-600';
+
+                const completedCount = stages.filter(s => getStageStatus(s) === 'complete').length;
+                const progressPercent = Math.round((completedCount / stages.length) * 100);
+
+                let lastCompletedIdx = -1;
+                stages.forEach((stg, i) => {
+                  if (getStageStatus(stg) === 'complete') lastCompletedIdx = i;
+                });
+
+                const handleStageStatusChange = async (targetStage: string, newStatus: string, autoFillPreceding: boolean = true) => {
+                  const targetIdx = stages.indexOf(targetStage);
+                  const newMap = { ...stageStatuses };
+
+                  if (newStatus === 'complete' && autoFillPreceding && targetIdx !== -1) {
+                    for (let i = 0; i <= targetIdx; i++) {
+                      newMap[stages[i]] = 'complete';
+                    }
+                  } else {
+                    newMap[targetStage] = newStatus;
+                  }
+
+                  try {
+                    setStatusUpdating(true);
+                    const updated = await updateDeployment(id!, { stage_statuses: newMap });
+                    setDeployment((prev: any) => prev ? { ...prev, ...updated } : updated);
+                  } catch (err) {
+                    alert('Failed to update stage status');
+                  } finally {
+                    setStatusUpdating(false);
+                  }
+                };
+
+                const handleNodeClick = (stgName: string) => {
+                  setSelectedPhase(stgName);
+
+                  if (clickTimeoutRef.current[stgName]) {
+                    // Double click detected!
+                    clearTimeout(clickTimeoutRef.current[stgName]);
+                    clickTimeoutRef.current[stgName] = null;
+                    handleStageStatusChange(stgName, 'complete', true);
+                  } else {
+                    // Single click timer
+                    clickTimeoutRef.current[stgName] = setTimeout(() => {
+                      clickTimeoutRef.current[stgName] = null;
+                      const currentSt = getStageStatus(stgName);
+                      const nextSt = currentSt === 'pending' ? 'not_started' : 'pending';
+                      handleStageStatusChange(stgName, nextSt, false);
+                    }, 250);
+                  }
+                };
 
                 return (
-                  <div className="space-y-4">
-                    {/* Stepper nodes */}
-                    <div className="overflow-x-auto pb-2 -mb-2">
-                      <div className="min-w-[550px] flex items-start w-full relative px-2 pt-1 pb-2">
-                        {statusOptions.map((status, index) => {
-                          const isLast = index === statusOptions.length - 1;
-                          const isPast = status !== 'Cancelled' && currentStatus !== 'Cancelled' && index < currentStepIndex;
-                          const isCurrent = index === currentStepIndex;
+                  <div className="space-y-6">
+                    {/* Horizontal Stepper Track */}
+                    <div className="bg-white rounded-xl border border-slate-200/80 p-4 sm:p-5 shadow-2xs">
+                      <div className="relative overflow-x-auto pb-4 pt-2 no-scrollbar">
+                        <div className="min-w-max relative px-4">
+                          {/* Background Connector Line */}
+                          <div className="absolute top-4 left-8 right-8 h-1 bg-slate-200 -z-0 rounded-full" />
 
-                          let circleStyle = 'bg-white border-2 border-slate-300 text-slate-400 group-hover:border-slate-400 group-hover:text-slate-600';
-                          let labelStyle = 'text-slate-400 group-hover:text-slate-600';
+                          {/* Active Progress Connector Line */}
+                          {lastCompletedIdx >= 0 && (
+                            <div 
+                              className="absolute top-4 left-8 h-1 bg-emerald-500 -z-0 rounded-full transition-all duration-300"
+                              style={{ 
+                                width: `${stages.length > 1 ? (lastCompletedIdx / (stages.length - 1)) * 92 : 0}%` 
+                              }}
+                            />
+                          )}
 
-                          if (isCurrent) {
-                            if (status === 'Cancelled') {
-                              circleStyle = 'bg-red-600 text-white ring-4 ring-red-100 ring-offset-1 scale-110 shadow-md';
-                              labelStyle = 'text-red-600 font-bold';
-                            } else if (status === 'On Hold') {
-                              circleStyle = 'bg-amber-500 text-white ring-4 ring-amber-100 ring-offset-1 scale-110 shadow-md';
-                              labelStyle = 'text-amber-600 font-bold';
-                            } else if (status === 'Completed') {
-                              circleStyle = 'bg-emerald-600 text-white ring-4 ring-emerald-100 ring-offset-1 scale-110 shadow-md';
-                              labelStyle = 'text-emerald-600 font-bold';
-                            } else {
-                              circleStyle = 'bg-blue-600 text-white ring-4 ring-blue-100 ring-offset-1 scale-110 shadow-md';
-                              labelStyle = 'text-blue-700 font-bold';
-                            }
-                          } else if (status === 'Cancelled') {
-                            circleStyle = 'bg-white border-2 border-slate-300 text-slate-400 group-hover:border-red-400 group-hover:text-red-500';
-                            labelStyle = 'text-slate-400 group-hover:text-red-500';
-                          } else if (isPast) {
-                            circleStyle = 'bg-emerald-600 text-white ring-4 ring-emerald-50 group-hover:bg-emerald-700';
-                            labelStyle = 'text-slate-800 font-medium';
-                          }
+                          {/* Stage Nodes Track */}
+                          <div className="flex items-start justify-between gap-6 sm:gap-8 relative z-10">
+                            {stages.map((stgName, index) => {
+                              const stStatus = getStageStatus(stgName);
+                              const isSelected = selectedPhase === stgName;
+                              const isComplete = stStatus === 'complete';
+                              const isPending = stStatus === 'pending';
 
-                          const stageNumber = cancelledIsFirst ? index : index + 1;
-                          const isSegmentActive = cancelledIsFirst
-                            ? index > 0 && !isCancelled && currentStepIndex > index
-                            : !isCancelled && currentStepIndex > index;
-
-                          return (
-                            <div key={status} className="relative flex-1 flex flex-col items-center">
-                              {/* Connecting track line to the next node (only rendered between nodes, never outside) */}
-                              {!isLast && (
+                              return (
                                 <div 
-                                  className="absolute top-5 left-1/2 w-full h-1 -z-0 -translate-y-1/2"
+                                  key={stgName} 
+                                  className="flex flex-col items-center group relative min-w-[85px] max-w-[110px]"
                                 >
-                                  <div className="w-full h-full bg-slate-200">
-                                    <div 
-                                      className={`h-full transition-all duration-300 ${segmentColor}`}
-                                      style={{ width: isSegmentActive ? '100%' : '0%' }}
-                                    />
+                                  {/* Node Button */}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleNodeClick(stgName)}
+                                    disabled={statusUpdating}
+                                    title={`Click once: Pending | Double-click: Complete | Stage: ${stgName}`}
+                                    className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs transition-all cursor-pointer relative ${
+                                      isComplete
+                                        ? 'bg-emerald-600 text-white ring-4 ring-emerald-100 hover:bg-emerald-700 shadow-xs'
+                                        : isPending
+                                        ? 'bg-blue-600 text-white ring-4 ring-blue-100 scale-110 shadow-md animate-pulse'
+                                        : 'bg-white border-2 border-slate-300 text-slate-500 hover:border-blue-400 group-hover:text-slate-800'
+                                    } ${isSelected ? 'ring-2 ring-offset-2 ring-blue-500' : ''}`}
+                                  >
+                                    {isComplete ? (
+                                      <Check className="w-4 h-4 stroke-[2.5]" />
+                                    ) : isPending ? (
+                                      <Clock className="w-4 h-4" />
+                                    ) : (
+                                      <span>{index + 1}</span>
+                                    )}
+                                  </button>
+
+                                  {/* Label & Selector */}
+                                  <div className="mt-2.5 text-center px-0.5 space-y-1">
+                                    <span 
+                                      className={`text-xs block font-semibold leading-tight transition-colors ${
+                                        isSelected
+                                          ? 'text-blue-700 font-bold underline decoration-blue-400 underline-offset-4'
+                                          : isComplete
+                                          ? 'text-slate-800 font-medium'
+                                          : isPending
+                                          ? 'text-blue-600 font-bold'
+                                          : 'text-slate-500 group-hover:text-slate-700'
+                                      }`}
+                                    >
+                                      {stgName}
+                                    </span>
+
+                                    {/* Status Selector Pill */}
+                                    <div className="pt-0.5" onClick={(e) => e.stopPropagation()}>
+                                      <select
+                                        value={stStatus}
+                                        disabled={statusUpdating}
+                                        onChange={(e) => {
+                                          e.stopPropagation();
+                                          handleStageStatusChange(stgName, e.target.value, e.target.value === 'complete');
+                                        }}
+                                        className={`text-[10px] font-semibold py-0.5 px-1.5 rounded-full border cursor-pointer focus:outline-none transition-colors ${
+                                          isComplete
+                                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                            : isPending
+                                            ? 'bg-blue-50 text-blue-700 border-blue-200 font-bold'
+                                            : 'bg-slate-100 text-slate-500 border-slate-200'
+                                        }`}
+                                      >
+                                        <option value="not_started">Not Started</option>
+                                        <option value="pending">Pending</option>
+                                        <option value="complete">Complete</option>
+                                      </select>
+                                    </div>
                                   </div>
                                 </div>
-                              )}
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
 
-                              <button 
-                                type="button"
-                                disabled={statusUpdating}
-                                onClick={() => handleStatusChange(status)}
-                                title={`Set status to ${status}`}
-                                className="flex flex-col items-center relative z-10 group cursor-pointer text-center focus:outline-none p-1 rounded-lg transition-all disabled:opacity-50 w-full"
-                              >
-                                {/* Circle node */}
-                                <div 
-                                  className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs transition-all shadow-xs ${circleStyle}`}
-                                >
-                                  {status === 'Cancelled' ? (
-                                    <X className="w-4 h-4 stroke-[2.5]" />
-                                  ) : isPast ? (
-                                    <Check className="w-4 h-4 stroke-[2.5]" />
-                                  ) : (
-                                    <span>{stageNumber}</span>
-                                  )}
-                                </div>
-
-                                {/* Label */}
-                                <div className="mt-2 text-center w-full px-0.5">
-                                  <span className={`text-xs block font-semibold transition-colors truncate ${labelStyle}`}>
-                                    {status}
-                                  </span>
-                                  <span className="text-[10px] text-slate-400 hidden sm:block truncate">
-                                    {status === 'Cancelled'
-                                      ? 'Cancelled'
-                                      : isCurrent 
-                                      ? (status === 'On Hold' ? 'On Hold' : status === 'Completed' ? 'Completed' : 'Active') 
-                                      : isPast 
-                                      ? 'Done' 
-                                      : `Stage ${stageNumber}`}
-                                  </span>
-                                </div>
-                              </button>
-                            </div>
-                          );
-                        })}
+                      {/* Progress Bar Summary Footer */}
+                      <div className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between text-xs text-slate-500 gap-2">
+                        <div className="flex items-center space-x-2">
+                          <span className="font-semibold text-slate-700">Overall Progress:</span>
+                          <div className="w-32 bg-slate-200 h-2 rounded-full overflow-hidden inline-block">
+                            <div className="bg-emerald-500 h-full transition-all duration-300" style={{ width: `${progressPercent}%` }} />
+                          </div>
+                          <span className="font-bold text-slate-900">{progressPercent}%</span>
+                          <span className="text-slate-400">({completedCount} of {stages.length} stages)</span>
+                        </div>
+                        <div className="text-[11px] text-slate-400 italic">
+                          💡 Click once for Pending | Double-click for Complete
+                        </div>
                       </div>
                     </div>
+                  </div>
+                );
+              })()}
 
-                    {/* Progress summary bar */}
-                    <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between text-xs text-slate-500 px-1">
-                      {isCancelled ? (
-                        <span>Status: <strong className="text-red-600 font-semibold">Deployment Cancelled</strong></span>
-                      ) : currentNormalIndex < 0 ? (
-                        <span>Status: <strong className="text-slate-700 font-semibold">{rawStatus}</strong> (not in configured workflow)</span>
-                      ) : (
-                        <span>Progress: <strong className="text-slate-700 font-semibold">{progressPercent}%</strong> ({currentNormalIndex + 1} of {normalSteps.length} phases)</span>
-                      )}
-                    </div>
-
-                    {/* Stage Remarks Notepad Card */}
-                    <div className="mt-4 pt-4 border-t border-slate-200">
-                      <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
-                        <div className="flex items-center space-x-2">
-                          <MessageSquare className="w-4 h-4 text-indigo-600" />
-                          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800">
-                            Stage Remarks
-                          </h3>
-                        </div>
+              {/* Stage Remarks Notepad Card */}
+              <div className="mt-4 pt-4 border-t border-slate-200">
+                <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+                  <div className="flex items-center space-x-2">
+                    <MessageSquare className="w-4 h-4 text-indigo-600" />
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800">
+                      Stage Remarks
+                    </h3>
+                  </div>
 
                         <button
                           type="button"
@@ -1547,10 +1658,7 @@ export const DeploymentDetailPage = () => {
                           </div>
                         );
                       })()}
-                    </div>
-                  </div>
-                );
-              })()}
+              </div>
             </div>
           </div>
 

@@ -228,14 +228,24 @@ export interface DeploymentData {
   location: string;
   deployed_product?: string;
   deployment_date?: string;
+  kickoff_date?: string;
+  end_date?: string;
   internal_group_name?: string;
   account_owner?: string;
   lead_engineer?: string;
   assisting_engineers?: string;
+  validated_by?: string;
+  device_status?: string;
+  collected?: boolean;
+  product_quantity?: number;
   deployment_type: 'Deployment' | 'POC';
   pre_poc_status?: string;
   poc_status?: string;
   post_poc_status?: string;
+  kickoff_status?: string;
+  materials_status?: string;
+  uat_fat_status?: string;
+  stage_statuses?: Record<string, string>;
   status_updated_at?: string;
   status_updated_by_id?: string;
   status_updated_by_name?: string;
@@ -548,6 +558,47 @@ export const updateDeploymentExtraItem = async (deploymentId: string, itemId: st
 
 export const deleteDeploymentExtraItem = async (deploymentId: string, itemId: string): Promise<void> => {
   await api.delete(`/deployments/${deploymentId}/extra-items/${itemId}`);
+};
+
+export interface FieldDefinition {
+  key: string;
+  label: string;
+  required: boolean;
+}
+
+export interface ExcelImportPreviewResult {
+  headers: string[];
+  field_definitions: FieldDefinition[];
+  auto_mappings: Record<string, string>;
+  row_count: number;
+  preview_rows: Record<string, string>[];
+}
+
+export interface ExcelImportExecuteResult {
+  success: boolean;
+  deployments_created: number;
+  companies_created: number;
+  extra_items_created: number;
+  errors: string[];
+}
+
+export const previewExcelImport = async (file: File): Promise<ExcelImportPreviewResult> => {
+  const formData = new FormData();
+  formData.append('file', file);
+  const { data } = await api.post('/deployments/import-excel/preview', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  });
+  return data;
+};
+
+export const executeExcelImport = async (file: File, mapping: Record<string, string>): Promise<ExcelImportExecuteResult> => {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('mapping_json', JSON.stringify(mapping));
+  const { data } = await api.post('/deployments/import-excel/execute', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  });
+  return data;
 };
 
 export default api;

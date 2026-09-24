@@ -93,3 +93,6 @@ htmlcov/
 *.sqlite
 *.sqlite3
 *.db
+testDep.xlsx
+.gitignore
+testPOC.xlsx

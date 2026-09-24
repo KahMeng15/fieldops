@@ -630,3 +630,386 @@ async def delete_deployment_extra_item(
 
     return None
 
+
+# Excel Import Preview & Execution Endpoints
+FIELD_DEFINITIONS = [
+    {"key": "customer_name", "label": "Customer Name", "required": True},
+    {"key": "account_owner", "label": "Account Owner / Sales Person", "required": False},
+    {"key": "deployment_type", "label": "Deployment Type (POC / Deployment)", "required": False},
+    {"key": "product_1", "label": "Product 1 Name", "required": False},
+    {"key": "product_1_qty", "label": "Product 1 Quantity", "required": False},
+    {"key": "product_2", "label": "Product 2 Name (Creates 2nd Deployment)", "required": False},
+    {"key": "product_2_qty", "label": "Product 2 Quantity", "required": False},
+    {"key": "deployment_date", "label": "Start / Received Date", "required": False},
+    {"key": "kickoff_date", "label": "Kick-Off Date", "required": False},
+    {"key": "end_date", "label": "End / Target Date", "required": False},
+    {"key": "pre_poc_status", "label": "POC Stage 1 (Pre-PoC)", "required": False},
+    {"key": "poc_status", "label": "POC Stage 2 (PoC)", "required": False},
+    {"key": "post_poc_status", "label": "POC Stage 3 (Post-PoC)", "required": False},
+    {"key": "kickoff_status", "label": "Deployment Stage 1 (Kick-Off)", "required": False},
+    {"key": "materials_status", "label": "Deployment Stage 2 (Materials)", "required": False},
+    {"key": "uat_fat_status", "label": "Deployment Stage 3 (UAT/FAT)", "required": False},
+    {"key": "device_status", "label": "Device Status (On-Prem / Virtual / Cloud)", "required": False},
+    {"key": "collected", "label": "Collected (True / False)", "required": False},
+    {"key": "addon_1_name", "label": "Add-On Item 1 Name", "required": False},
+    {"key": "addon_1_qty", "label": "Add-On Item 1 Quantity", "required": False},
+    {"key": "addon_2_name", "label": "Add-On Item 2 Name", "required": False},
+    {"key": "addon_2_qty", "label": "Add-On Item 2 Quantity", "required": False},
+    {"key": "addon_3_name", "label": "Add-On Item 3 Name", "required": False},
+    {"key": "addon_3_qty", "label": "Add-On Item 3 Quantity", "required": False},
+    {"key": "deployment_folder", "label": "Link to Folder", "required": False},
+    {"key": "lead_engineer", "label": "Led By / Lead Engineer", "required": False},
+    {"key": "assisting_engineers", "label": "Assisted By / Assisting Engineers", "required": False},
+    {"key": "validated_by", "label": "Validated By", "required": False},
+    {"key": "notes", "label": "Remarks / Notes", "required": False},
+]
+
+def parse_excel_bytes(file_bytes: bytes, filename: str):
+    import io, openpyxl, csv
+    
+    if filename.endswith(".csv"):
+        text = file_bytes.decode("utf-8-sig", errors="ignore")
+        reader = list(csv.reader(io.StringIO(text)))
+        if not reader:
+            return [], []
+        headers = [str(c).strip() for c in reader[0]]
+        parsed_rows = []
+        for r in reader[1:]:
+            if not any(r): continue
+            row_dict = {}
+            for idx, val in enumerate(r):
+                if idx < len(headers):
+                    row_dict[headers[idx]] = str(val).strip()
+            parsed_rows.append(row_dict)
+        return headers, parsed_rows
+
+    wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
+    ws = wb.active
+    rows = list(ws.iter_rows(values_only=True))
+    if not rows:
+        return [], []
+    
+    row0 = [str(c).strip() if c is not None else "" for c in rows[0]]
+    row1 = [str(c).strip() if c is not None else "" for c in rows[1]] if len(rows) > 1 else []
+    
+    has_subheaders = False
+    if row1 and any(h.lower() in ["pre-poc", "poc", "post-poc", "kick-off", "materials", "uat/fat", "remarks"] for h in row1):
+        has_subheaders = True
+    elif row1 and "Progress" in row0:
+        has_subheaders = True
+        
+    headers = []
+    start_data_row = 1
+    if has_subheaders:
+        start_data_row = 2
+        last_top_header = ""
+        for i in range(max(len(row0), len(row1))):
+            top = row0[i] if i < len(row0) else ""
+            sub = row1[i] if i < len(row1) else ""
+            if top:
+                last_top_header = top
+            else:
+                top = last_top_header
+                
+            if top and sub and top.lower() != sub.lower():
+                headers.append(f"{top} -> {sub}")
+            elif sub:
+                headers.append(sub)
+            elif top:
+                headers.append(top)
+            else:
+                headers.append(f"Column_{i+1}")
+    else:
+        headers = [h if h else f"Column_{i+1}" for i, h in enumerate(row0)]
+        
+    data_rows = rows[start_data_row:]
+    parsed_rows = []
+    for r in data_rows:
+        if not any(r):
+            continue
+        row_dict = {}
+        for idx, val in enumerate(r):
+            if idx < len(headers):
+                hdr = headers[idx]
+                row_dict[hdr] = str(val).strip() if val is not None else ""
+        parsed_rows.append(row_dict)
+        
+    return headers, parsed_rows
+
+def auto_match_headers(headers: List[str]) -> Dict[str, str]:
+    mappings = {}
+    for i, h in enumerate(headers):
+        hl = h.lower().strip()
+        if "customer" in hl or "company" in hl or "client" in hl:
+            mappings.setdefault("customer_name", h)
+        elif "sales" in hl or "account owner" in hl or "sales person" in hl:
+            mappings.setdefault("account_owner", h)
+        elif "product 2" in hl:
+            mappings.setdefault("product_2", h)
+            if i + 1 < len(headers) and headers[i+1] == "#":
+                mappings.setdefault("product_2_qty", headers[i+1])
+        elif hl == "product" or "product 1" in hl:
+            mappings.setdefault("product_1", h)
+            if i + 1 < len(headers) and headers[i+1] == "#":
+                mappings.setdefault("product_1_qty", headers[i+1])
+        elif "add-on item 3" in hl or "addon item 3" in hl:
+            mappings.setdefault("addon_3_name", h)
+            if i + 1 < len(headers) and headers[i+1] == "#":
+                mappings.setdefault("addon_3_qty", headers[i+1])
+        elif "add-on item 2" in hl or "addon item 2" in hl:
+            mappings.setdefault("addon_2_name", h)
+            if i + 1 < len(headers) and headers[i+1] == "#":
+                mappings.setdefault("addon_2_qty", headers[i+1])
+        elif "add-on item" in hl or "addon item" in hl:
+            mappings.setdefault("addon_1_name", h)
+            if i + 1 < len(headers) and headers[i+1] == "#":
+                mappings.setdefault("addon_1_qty", headers[i+1])
+        elif "recieved date" in hl or "received date" in hl or "start date" in hl or hl == "start":
+            mappings.setdefault("deployment_date", h)
+        elif "kick-off date" in hl or "kickoff date" in hl:
+            mappings.setdefault("kickoff_date", h)
+        elif "end date" in hl or "target date" in hl or "due date" in hl:
+            mappings.setdefault("end_date", h)
+        elif "pre-poc" in hl or "prepoc" in hl:
+            mappings.setdefault("pre_poc_status", h)
+        elif "post-poc" in hl or "postpoc" in hl:
+            mappings.setdefault("post_poc_status", h)
+        elif "poc" in hl and "pre" not in hl and "post" not in hl:
+            mappings.setdefault("poc_status", h)
+        elif "kick-off" in hl or "kickoff" in hl:
+            mappings.setdefault("kickoff_status", h)
+        elif "materials" in hl:
+            mappings.setdefault("materials_status", h)
+        elif "uat" in hl or "fat" in hl:
+            mappings.setdefault("uat_fat_status", h)
+        elif "device status" in hl or "device" in hl:
+            mappings.setdefault("device_status", h)
+        elif "collected" in hl:
+            mappings.setdefault("collected", h)
+        elif "link to folder" in hl or "folder" in hl:
+            mappings.setdefault("deployment_folder", h)
+        elif "led by" in hl or "lead engineer" in hl:
+            mappings.setdefault("lead_engineer", h)
+        elif "assisted by" in hl or "assisting" in hl:
+            mappings.setdefault("assisting_engineers", h)
+        elif "validated by" in hl:
+            mappings.setdefault("validated_by", h)
+        elif "remark" in hl or "notes" in hl:
+            mappings.setdefault("notes", h)
+    return mappings
+
+from fastapi import UploadFile, File, Form
+import json
+
+@router.post("/import-excel/preview")
+async def preview_excel_import(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user)
+):
+    contents = await file.read()
+    headers, rows = parse_excel_bytes(contents, file.filename or "file.xlsx")
+    mappings = auto_match_headers(headers)
+    
+    return {
+        "headers": headers,
+        "field_definitions": FIELD_DEFINITIONS,
+        "auto_mappings": mappings,
+        "row_count": len(rows),
+        "preview_rows": rows[:5]
+    }
+
+def parse_dt(dt_str: str) -> Optional[datetime]:
+    if not dt_str: return None
+    dt_str = dt_str.replace(".000000", "").replace(".000", "").strip()
+    formats = [
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d",
+        "%d/%m/%Y",
+        "%m/%d/%Y",
+        "%Y/%m/%d"
+    ]
+    for fmt in formats:
+        try:
+            return datetime.strptime(dt_str, fmt)
+        except ValueError:
+            pass
+    return None
+
+@router.post("/import-excel/execute")
+async def execute_excel_import(
+    request: Request,
+    file: UploadFile = File(...),
+    mapping_json: str = Form(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(["create_deployment"]))
+):
+    contents = await file.read()
+    headers, rows = parse_excel_bytes(contents, file.filename or "file.xlsx")
+    mapping = json.loads(mapping_json)
+
+    deployments_created = 0
+    companies_created = 0
+    extra_items_created = 0
+    errors = []
+
+    actual_db_cols = sync_orm_columns(db)
+
+    for idx, r in enumerate(rows, start=1):
+        cust_col = mapping.get("customer_name")
+        cust_name = r.get(cust_col, "").strip() if cust_col else ""
+        if not cust_name:
+            continue
+
+        # Find or create company
+        comp = db.query(Company).filter(Company.name.ilike(cust_name), Company.deleted_at == None).first()
+        if not comp:
+            comp = Company(name=cust_name)
+            db.add(comp)
+            db.flush()
+            companies_created += 1
+
+        # Products to create deployments for
+        products_to_create = []
+        
+        p1_col = mapping.get("product_1")
+        p1_qty_col = mapping.get("product_1_qty")
+        p1_name = r.get(p1_col, "").strip() if p1_col else ""
+        p1_qty = int(r.get(p1_qty_col, "1")) if p1_qty_col and r.get(p1_qty_col, "").isdigit() else 1
+        
+        products_to_create.append({"product": p1_name or "FieldOps Core Gateway", "qty": p1_qty})
+
+        p2_col = mapping.get("product_2")
+        p2_qty_col = mapping.get("product_2_qty")
+        p2_name = r.get(p2_col, "").strip() if p2_col else ""
+        if p2_name:
+            p2_qty = int(r.get(p2_qty_col, "1")) if p2_qty_col and r.get(p2_qty_col, "").isdigit() else 1
+            products_to_create.append({"product": p2_name, "qty": p2_qty})
+
+        # Add-On items
+        addons = []
+        for i in range(1, 4):
+            an_col = mapping.get(f"addon_{i}_name")
+            aq_col = mapping.get(f"addon_{i}_qty")
+            an_val = r.get(an_col, "").strip() if an_col else ""
+            if an_val:
+                aq_val = int(r.get(aq_col, "1")) if aq_col and r.get(aq_col, "").isdigit() else 1
+                addons.append({"name": an_val, "qty": aq_val})
+
+        # Base fields
+        acc_owner_col = mapping.get("account_owner")
+        acc_owner = r.get(acc_owner_col, "").strip() if acc_owner_col else None
+        
+        start_dt_col = mapping.get("deployment_date")
+        start_dt = parse_dt(r.get(start_dt_col, "")) if start_dt_col else None
+        
+        kickoff_dt_col = mapping.get("kickoff_date")
+        kickoff_dt = parse_dt(r.get(kickoff_dt_col, "")) if kickoff_dt_col else None
+        
+        end_dt_col = mapping.get("end_date")
+        end_dt = parse_dt(r.get(end_dt_col, "")) if end_dt_col else None
+
+        pre_poc_col = mapping.get("pre_poc_status")
+        pre_poc = r.get(pre_poc_col, "").strip() if pre_poc_col else None
+
+        poc_col = mapping.get("poc_status")
+        poc = r.get(poc_col, "").strip() if poc_col else None
+
+        post_poc_col = mapping.get("post_poc_status")
+        post_poc = r.get(post_poc_col, "").strip() if post_poc_col else None
+
+        kickoff_st_col = mapping.get("kickoff_status")
+        kickoff_st = r.get(kickoff_st_col, "").strip() if kickoff_st_col else None
+
+        materials_st_col = mapping.get("materials_status")
+        materials_st = r.get(materials_st_col, "").strip() if materials_st_col else None
+
+        uat_fat_st_col = mapping.get("uat_fat_status")
+        uat_fat_st = r.get(uat_fat_st_col, "").strip() if uat_fat_st_col else None
+
+        dev_st_col = mapping.get("device_status")
+        dev_st = r.get(dev_st_col, "").strip() if dev_st_col else None
+
+        collected_col = mapping.get("collected")
+        collected_val = r.get(collected_col, "").strip().lower() if collected_col else ""
+        collected_bool = collected_val in ["true", "1", "yes", "done"]
+
+        folder_col = mapping.get("deployment_folder")
+        folder = r.get(folder_col, "").strip() if folder_col else None
+
+        lead_eng_col = mapping.get("lead_engineer")
+        lead_eng = r.get(lead_eng_col, "").strip() if lead_eng_col else None
+
+        assist_eng_col = mapping.get("assisting_engineers")
+        assist_eng = r.get(assist_eng_col, "").strip() if assist_eng_col else None
+
+        val_by_col = mapping.get("validated_by")
+        val_by = r.get(val_by_col, "").strip() if val_by_col else None
+
+        notes_col = mapping.get("notes")
+        notes_val = r.get(notes_col, "").strip() if notes_col else None
+
+        # Auto-detect deployment_type
+        dep_type_col = mapping.get("deployment_type")
+        dep_type = r.get(dep_type_col, "").strip() if dep_type_col else None
+        if not dep_type:
+            if pre_poc or poc or post_poc:
+                dep_type = "POC"
+            else:
+                dep_type = "Deployment"
+
+        # Create deployments
+        for item_info in products_to_create:
+            try:
+                dep = Deployment(
+                    company_id=comp.id,
+                    customer_name=comp.name,
+                    deployed_product=item_info["product"],
+                    product_quantity=item_info["qty"],
+                    account_owner=acc_owner,
+                    deployment_type=dep_type,
+                    deployment_date=start_dt or datetime.utcnow(),
+                    kickoff_date=kickoff_dt,
+                    end_date=end_dt,
+                    pre_poc_status=pre_poc,
+                    poc_status=poc,
+                    post_poc_status=post_poc,
+                    kickoff_status=kickoff_st,
+                    materials_status=materials_st,
+                    uat_fat_status=uat_fat_st,
+                    device_status=dev_st,
+                    collected=collected_bool,
+                    deployment_folder=folder,
+                    lead_engineer=lead_eng,
+                    assisting_engineers=assist_eng,
+                    validated_by=val_by,
+                    notes=notes_val,
+                    created_by_id=current_user.id
+                )
+                db.add(dep)
+                db.flush()
+                deployments_created += 1
+
+                # Add extra items
+                for add_on in addons:
+                    ex = DeploymentExtraItem(
+                        deployment_id=dep.id,
+                        item_name=add_on["name"],
+                        quantity=add_on["qty"]
+                    )
+                    db.add(ex)
+                    extra_items_created += 1
+
+            except Exception as e:
+                errors.append(f"Row {idx} ({cust_name}): {str(e)}")
+
+    db.commit()
+
+    return {
+        "success": True,
+        "deployments_created": deployments_created,
+        "companies_created": companies_created,
+        "extra_items_created": extra_items_created,
+        "errors": errors
+    }
+
+

@@ -119,6 +119,16 @@ class DeploymentSchema(BaseModel):
     pre_poc_status: Optional[str] = None
     poc_status: Optional[str] = None
     post_poc_status: Optional[str] = None
+    kickoff_status: Optional[str] = None
+    materials_status: Optional[str] = None
+    uat_fat_status: Optional[str] = None
+    stage_statuses: Optional[Dict[str, Any]] = None
+    kickoff_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
+    device_status: Optional[str] = None
+    collected: Optional[bool] = False
+    validated_by: Optional[str] = None
+    product_quantity: Optional[int] = 1
     status_updated_at: Optional[datetime] = None
     status_updated_by_id: Optional[UUID] = None
     status_updated_by_name: Optional[str] = None
