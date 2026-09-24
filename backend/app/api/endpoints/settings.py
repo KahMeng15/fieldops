@@ -6,7 +6,8 @@ from app.db.base import get_db
 from app.models import (
     LookupCategory, LookupValue, AuditLog, User, 
     DeploymentExtraItem, DeploymentPhaseRemark, CredentialVersion, 
-    Credential, ConfigReport, Reminder, LoanedItem, DeploymentEngineer, Deployment
+    Credential, ConfigReport, Reminder, LoanedItem, DeploymentEngineer, Deployment,
+    Company, Location, CompanyContact
 )
 from app.core.security import verify_password
 from app.api.deps import get_current_user
@@ -102,7 +103,10 @@ DEFAULT_DEPLOYMENT_SETTINGS: Dict[str, Any] = {
                 "Michael Chang (Principal Engineer)",
                 "David Kim (Senior Systems Architect)",
                 "Priya Patel (Lead Field Engineer)",
-                "James Wilson (Deployment Lead)"
+                "James Wilson (Deployment Lead)",
+                "Sarah Miller (Field Specialist)",
+                "Rachel Adams (Network Engineer)",
+                "Liam O'Connor (Infrastructure Tech)"
             ],
             "allow_other": True,
             "other_placeholder": "Type to add new lead...",
@@ -117,8 +121,11 @@ DEFAULT_DEPLOYMENT_SETTINGS: Dict[str, Any] = {
             "required": False,
             "default_value": "",
             "options": [
-                "Sarah Miller (Field Specialist)",
+                "Michael Chang (Principal Engineer)",
                 "David Kim (Senior Systems Architect)",
+                "Priya Patel (Lead Field Engineer)",
+                "James Wilson (Deployment Lead)",
+                "Sarah Miller (Field Specialist)",
                 "Rachel Adams (Network Engineer)",
                 "Liam O'Connor (Infrastructure Tech)"
             ],
@@ -415,13 +422,34 @@ def sync_database_columns(db: Session, settings_data: Dict[str, Any]):
             if not hasattr(Deployment, col_name):
                 setattr(Deployment, col_name, Column(String))
 
+def sync_engineer_options(fields: List[Dict[str, Any]]):
+    """Ensure lead_engineer and assisting_engineers share the exact same merged list of engineer options."""
+    lead_f = next((f for f in fields if f.get("key") == "lead_engineer"), None)
+    assist_f = next((f for f in fields if f.get("key") == "assisting_engineers"), None)
+    
+    if lead_f or assist_f:
+        lead_opts = (lead_f.get("options", []) if lead_f else []) or []
+        assist_opts = (assist_f.get("options", []) if assist_f else []) or []
+        
+        combined = []
+        for opt in (lead_opts + assist_opts):
+            if opt and opt not in combined:
+                combined.append(opt)
+        
+        if lead_f:
+            lead_f["options"] = list(combined)
+        if assist_f:
+            assist_f["options"] = list(combined)
+
 def sync_lookup_values(db: Session, settings_data: Dict[str, Any]):
-    """Sync select options into lookup_categories and lookup_values tables."""
+    """Sync select & multiselect options into lookup_categories and lookup_values tables."""
     fields = settings_data.get("fields", [])
+    sync_engineer_options(fields)
+
     for field in fields:
         field_key = field.get("key")
         options = field.get("options")
-        if field.get("type") == "select" and options:
+        if field.get("type") in ["select", "multiselect"] and options:
             cat_name = f"field_{field_key}"
             category = db.query(LookupCategory).filter_by(name=cat_name).first()
             if not category:
@@ -450,6 +478,7 @@ async def get_deployment_field_settings(
     setting_cat = db.query(LookupCategory).filter_by(name="deployment_field_settings").first()
     if not setting_cat or not setting_cat.description:
         # First time, seed default settings
+        sync_engineer_options(DEFAULT_DEPLOYMENT_SETTINGS.get("fields", []))
         setting_cat = LookupCategory(
             name="deployment_field_settings",
             description=json.dumps(DEFAULT_DEPLOYMENT_SETTINGS)
@@ -480,6 +509,9 @@ async def get_deployment_field_settings(
             if k in default_options_map and not f.get("options"):
                 f["options"] = default_options_map[k]
                 updated_any = True
+
+        # Synchronize engineer options across lead and assisting engineers
+        sync_engineer_options(data.get("fields", []))
 
         # Ensure any newly added default fields are present
         existing_keys = {f.get("key") for f in data.get("fields", [])}
@@ -513,6 +545,9 @@ async def update_deployment_field_settings(
     # Validate payload has 'fields'
     if "fields" not in payload or not isinstance(payload["fields"], list):
         raise HTTPException(status_code=400, detail="Invalid payload: 'fields' list required.")
+
+    # Merge engineer options so lead and assisting engineers share the exact same pool
+    sync_engineer_options(payload.get("fields", []))
 
     setting_cat = db.query(LookupCategory).filter_by(name="deployment_field_settings").first()
     old_value = json.loads(setting_cat.description) if setting_cat and setting_cat.description else None
@@ -764,6 +799,7 @@ async def reset_database(
         )
 
     try:
+        # 1. Delete all operational data records (deployments, companies, locations, credentials, etc.)
         db.query(DeploymentExtraItem).delete()
         db.query(DeploymentPhaseRemark).delete()
         db.query(CredentialVersion).delete()
@@ -773,14 +809,41 @@ async def reset_database(
         db.query(LoanedItem).delete()
         db.query(DeploymentEngineer).delete()
         db.query(Deployment).delete()
+        db.query(Location).delete()
+        db.query(CompanyContact).delete()
+        db.query(Company).delete()
         db.query(AuditLog).delete()
+
+        # 2. Delete all lookup values and categories (wiping custom options for internal_group, deployed_product, account_owner, engineers, extra_items, etc.)
+        db.query(LookupValue).delete()
+        db.query(LookupCategory).delete()
         db.commit()
+
+        # 3. Re-create default settings categories
+        dep_cat = LookupCategory(name="deployment_field_settings", description=json.dumps(DEFAULT_DEPLOYMENT_SETTINGS))
+        db.add(dep_cat)
+
+        comp_cat = LookupCategory(name="company_field_settings", description=json.dumps(DEFAULT_COMPANY_SETTINGS))
+        db.add(comp_cat)
+
+        reg_cat = LookupCategory(name="region_settings", description=json.dumps(DEFAULT_REGION_SETTINGS))
+        db.add(reg_cat)
+
+        db.commit()
+
+        # 4. Sync lookups & database table columns to clean system defaults
+        sync_lookup_values(db, DEFAULT_DEPLOYMENT_SETTINGS)
+        sync_database_columns(db, DEFAULT_DEPLOYMENT_SETTINGS)
+
+        sync_lookup_values(db, DEFAULT_COMPANY_SETTINGS)
+        sync_company_database_columns(db, DEFAULT_COMPANY_SETTINGS)
+
     except Exception as e:
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to reset database operational data: {str(e)}"
+            detail=f"Failed to reset database: {str(e)}"
         )
 
-    return {"message": "Database operational records reset successfully."}
+    return {"message": "Database successfully reset and reinitialized to default system configuration."}
 
