@@ -30,7 +30,7 @@ services:
     restart: always
 
   minio:
-    image: quay.io/minio/minio:latest
+    image: elestio/minio:latest
     container_name: deployment-tracker-minio
     environment:
       MINIO_ROOT_USER: ${MINIO_USER:-minioadmin}
@@ -52,7 +52,7 @@ services:
     build: ./backend
     image: ghcr.io/kahmeng15/fieldops/backend:latest
     container_name: deployment-tracker-api
-    command: sh -c "alembic upgrade head && python scripts/seed_data.py && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
     environment:
       DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-supersecurepassword123}@postgres:5432/appdb
       REDIS_URL: redis://redis:6379/0

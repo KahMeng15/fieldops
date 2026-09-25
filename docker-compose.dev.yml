@@ -32,7 +32,7 @@ services:
       - app_network
 
   minio:
-    image: quay.io/minio/minio:latest
+    image: elestio/minio:latest
     container_name: fieldops-minio-dev
     environment:
       MINIO_ROOT_USER: ${MINIO_USER:-minioadmin}
@@ -57,9 +57,7 @@ services:
       dockerfile: Dockerfile
     container_name: fieldops-backend-dev
     command: >
-      sh -c "alembic upgrade head &&
-             python scripts/seed_data.py &&
-             uvicorn app.main:app --reload --host 0.0.0.0 --port 8000"
+      sh -c "alembic upgrade head && uvicorn app.main:app --reload --host 0.0.0.0 --port 8000"
     environment:
       DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-supersecurepassword123}@postgres:5432/appdb
       REDIS_URL: redis://redis:6379/0

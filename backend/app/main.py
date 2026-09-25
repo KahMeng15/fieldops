@@ -27,6 +27,14 @@ app.include_router(deployments.router, prefix="/api/deployments", tags=["deploym
 app.include_router(credentials.router, prefix="/api/credentials", tags=["credentials"])
 app.include_router(settings_router.router, prefix="/api/settings", tags=["settings"])
 
+@app.on_event("startup")
+def startup_event():
+    try:
+        from app.db.init_db import init_db
+        init_db()
+    except Exception as e:
+        print(f"Startup init error: {e}")
+
 @app.get("/api/health")
 async def health():
     return {"status": "ok"}
