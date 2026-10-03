@@ -14,8 +14,6 @@ import {
   Lock, 
   ArrowUp,
   ArrowDown,
-  ChevronDown,
-  ChevronUp,
   Database,
   ChevronsDown,
   ChevronsUp,
@@ -57,14 +55,15 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
   const isAdmin = type === 'admin';
 
   // Admin Active Tab: 'deployment' | 'company' | 'regions' | 'data'
-  const [adminTab, setAdminTab] = useState<'deployment' | 'company' | 'regions' | 'data'>('deployment');
+  const [adminTab, setAdminTab] = useState<'deployment' | 'company' | 'regions' | 'data' | 'users'>('deployment');
+  const [selectedDepFieldIndex, setSelectedDepFieldIndex] = useState<number | null>(null);
+  const [selectedCompFieldIndex, setSelectedCompFieldIndex] = useState<number | null>(null);
 
   // Deployment Settings State
   const [deploymentSettings, setDeploymentSettings] = useState<DeploymentFieldsSettings | null>(null);
   const [deploymentHasChanges, setDeploymentHasChanges] = useState(false);
   const [savingDeployment, setSavingDeployment] = useState(false);
-  const [deploymentCollapsed, setDeploymentCollapsed] = useState<Record<string, boolean>>({});
-  const [newDeploymentOptionInputs, setNewDeploymentOptionInputs] = useState<Record<string, string>>({});
+    const [newDeploymentOptionInputs, setNewDeploymentOptionInputs] = useState<Record<string, string>>({});
 
   // Add Custom Deployment Field State
   const [isAddingDeploymentField, setIsAddingDeploymentField] = useState(false);
@@ -82,8 +81,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
   const [companySettings, setCompanySettings] = useState<CompanyFieldsSettings | null>(null);
   const [companyHasChanges, setCompanyHasChanges] = useState(false);
   const [savingCompany, setSavingCompany] = useState(false);
-  const [companyCollapsed, setCompanyCollapsed] = useState<Record<string, boolean>>({});
-  const [newCompanyOptionInputs, setNewCompanyOptionInputs] = useState<Record<string, string>>({});
+    const [newCompanyOptionInputs, setNewCompanyOptionInputs] = useState<Record<string, string>>({});
   const [companyCategoryFilter, setCompanyCategoryFilter] = useState<'profile' | 'location' | 'contact'>('profile');
 
   // Add Custom Company Field State
@@ -301,16 +299,14 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
       depData.fields.forEach(f => {
         initialDepCollapsed[f.key] = true;
       });
-      setDeploymentCollapsed(initialDepCollapsed);
-      setDeploymentHasChanges(false);
+            setDeploymentHasChanges(false);
 
       setCompanySettings(compData);
       const initialCompCollapsed: Record<string, boolean> = {};
       compData.fields.forEach(f => {
         initialCompCollapsed[f.key] = true;
       });
-      setCompanyCollapsed(initialCompCollapsed);
-      setCompanyHasChanges(false);
+            setCompanyHasChanges(false);
       
       setRegions(regionsData || []);
       setRegionsHasChanges(false);
@@ -447,8 +443,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
       };
     });
 
-    setDeploymentCollapsed(prev => ({ ...prev, [finalKey]: false }));
-    setIsAddingDeploymentField(false);
+        setIsAddingDeploymentField(false);
     setNewDepLabel('');
     setNewDepKey('');
     setNewDepType('text');
@@ -621,8 +616,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
       };
     });
 
-    setCompanyCollapsed(prev => ({ ...prev, [finalKey]: false }));
-    setIsAddingCompanyField(false);
+        setIsAddingCompanyField(false);
     setNewCompLabel('');
     setNewCompKey('');
     setNewCompType('text');
@@ -683,37 +677,6 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
   };
 
   // Helper for Category Labels & Badges
-  const getCategoryBadge = (category?: string) => {
-    switch (category) {
-      case 'profile':
-        return (
-          <span className="text-[10px] font-semibold px-2 py-0.5 bg-blue-50 text-blue-700 rounded border border-blue-200 flex items-center space-x-1">
-            <Building2 className="w-3 h-3" />
-            <span>Company Profile</span>
-          </span>
-        );
-      case 'location':
-        return (
-          <span className="text-[10px] font-semibold px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded border border-emerald-200 flex items-center space-x-1">
-            <MapPin className="w-3 h-3" />
-            <span>Datacenter Location</span>
-          </span>
-        );
-      case 'contact':
-        return (
-          <span className="text-[10px] font-semibold px-2 py-0.5 bg-purple-50 text-purple-700 rounded border border-purple-200 flex items-center space-x-1">
-            <User className="w-3 h-3" />
-            <span>Company Contact</span>
-          </span>
-        );
-      default:
-        return (
-          <span className="text-[10px] font-semibold px-2 py-0.5 bg-slate-100 text-slate-700 rounded border border-slate-200">
-            General
-          </span>
-        );
-    }
-  };
 
   // --- Region Data Handlers ---
   const handleAddState = () => {
@@ -784,11 +747,11 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
           </div>
           <div>
             <h1 className="text-2xl font-bold text-slate-900">
-              {isAdmin ? 'Admin Field Customization' : 'User Settings'}
+              {isAdmin ? 'Admin Settings' : 'User Settings'}
             </h1>
             <p className="text-sm text-slate-500">
               {isAdmin
-                ? 'Manage and customize field specifications, default values, database mappings, and validation for Company and Deployment records.'
+                ? 'Configure system settings, user access, custom fields, and database operations.'
                 : 'Manage your user profile and account preferences.'}
             </p>
           </div>
@@ -862,68 +825,81 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
       {/* ADMIN SETTINGS VIEW */}
       {isAdmin && (
         <div className="space-y-6">
-          {/* Top Segmented Navigation Switcher */}
-          <div className="flex items-center p-1 bg-slate-100/90 rounded-xl border border-slate-200/80 shadow-2xs max-w-2xl">
-            <button
-              type="button"
-              onClick={() => setAdminTab('deployment')}
-              className={`flex-1 flex items-center justify-center space-x-2 py-2.5 px-4 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                adminTab === 'deployment'
-                  ? 'bg-white text-blue-600 shadow-xs ring-1 ring-slate-200/60'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
-              }`}
-            >
-              <Sliders className="w-4 h-4" />
-              <span>Deployment Info</span>
-              <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${adminTab === 'deployment' ? 'bg-blue-50 text-blue-600 font-bold' : 'bg-slate-200 text-slate-600'}`}>
-                {deploymentSettings?.fields.length || 0}
-              </span>
-            </button>
+          {/* ADMIN SETTINGS MAIN LAYOUT */}
+          <div className="flex flex-col md:flex-row gap-6 mt-4">
+            {/* LEFT SIDEBAR */}
+            <div className="w-full md:w-64 shrink-0 space-y-8 border-r border-slate-100 pr-4">
+              <div>
+                <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3 px-3">Administration</h3>
+                <div className="space-y-1">
+                  <button
+                    type="button"
+                    onClick={() => setAdminTab('users')}
+                    className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors cursor-pointer ${adminTab === 'users' ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}
+                  >
+                    <User className="w-4 h-4" />
+                    <span>User Management</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAdminTab(adminTab === 'deployment' || adminTab === 'company' || adminTab === 'regions' ? adminTab : 'deployment')}
+                    className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors cursor-pointer ${(adminTab === 'deployment' || adminTab === 'company' || adminTab === 'regions') ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}
+                  >
+                    <Sliders className="w-4 h-4" />
+                    <span>Database Fields</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAdminTab('data')}
+                    className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors cursor-pointer ${adminTab === 'data' ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}
+                  >
+                    <Database className="w-4 h-4" />
+                    <span>Data Management</span>
+                  </button>
+                </div>
+              </div>
+            </div>
 
-            <button
-              type="button"
-              onClick={() => setAdminTab('company')}
-              className={`flex-1 flex items-center justify-center space-x-2 py-2.5 px-4 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                adminTab === 'company'
-                  ? 'bg-white text-blue-600 shadow-xs ring-1 ring-slate-200/60'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
-              }`}
-            >
-              <Building2 className="w-4 h-4" />
-              <span>Company Info</span>
-              <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${adminTab === 'company' ? 'bg-blue-50 text-blue-600 font-bold' : 'bg-slate-200 text-slate-600'}`}>
-                {companySettings?.fields.length || 0}
-              </span>
-            </button>
+            {/* MAIN CONTENT AREA */}
+            <div className="flex-1 min-w-0 pb-12">
+              
+              {/* Users Tab (Placeholder) */}
+              {adminTab === 'users' && (
+                <div className="bg-white border border-slate-200 rounded-xl p-12 text-center text-slate-500 shadow-sm animate-in fade-in duration-300">
+                  <User className="w-16 h-16 text-slate-200 mx-auto mb-4" />
+                  <h2 className="text-xl font-bold text-slate-800">User Management</h2>
+                  <p className="mt-2 text-sm max-w-md mx-auto">Manage user accounts, system roles, permission levels, and secure access controls here.</p>
+                  <p className="mt-2 text-xs font-semibold text-blue-600 bg-blue-50 inline-block px-3 py-1 rounded-full border border-blue-200">Feature Coming Soon</p>
+                </div>
+              )}
 
-            <button
-              type="button"
-              onClick={() => setAdminTab('regions')}
-              className={`flex-1 flex items-center justify-center space-x-2 py-2.5 px-4 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                adminTab === 'regions'
-                  ? 'bg-white text-blue-600 shadow-xs ring-1 ring-slate-200/60'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
-              }`}
-            >
-              <MapPin className="w-4 h-4" />
-              <span>Region Data</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setAdminTab('data')}
-              className={`flex-1 flex items-center justify-center space-x-2 py-2.5 px-4 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                adminTab === 'data'
-                  ? 'bg-white text-blue-600 shadow-xs ring-1 ring-slate-200/60'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
-              }`}
-            >
-              <Database className="w-4 h-4" />
-              <span>Data & System</span>
-            </button>
-          </div>
-
-          {/* ==================== SECTION 1: DEPLOYMENT INFO FIELDS ==================== */}
+              {/* Sub-navigation for Database Fields */}
+              {(adminTab === 'deployment' || adminTab === 'company' || adminTab === 'regions') && (
+                <div className="flex items-center space-x-6 border-b border-slate-200 mb-6">
+                  <button
+                    type="button"
+                    onClick={() => setAdminTab('deployment')}
+                    className={`pb-3 text-sm font-bold transition-colors border-b-2 cursor-pointer ${adminTab === 'deployment' ? 'border-blue-600 text-blue-700' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}`}
+                  >
+                    Deployment Info
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAdminTab('company')}
+                    className={`pb-3 text-sm font-bold transition-colors border-b-2 cursor-pointer ${adminTab === 'company' ? 'border-blue-600 text-blue-700' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}`}
+                  >
+                    Company Info
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAdminTab('regions')}
+                    className={`pb-3 text-sm font-bold transition-colors border-b-2 cursor-pointer ${adminTab === 'regions' ? 'border-blue-600 text-blue-700' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}`}
+                  >
+                    Region Data
+                  </button>
+                </div>
+              )}
+{/* ==================== SECTION 1: DEPLOYMENT INFO FIELDS ==================== */}
           {adminTab === 'deployment' && (
             <div className="space-y-5">
               {/* Subheader bar */}
@@ -984,8 +960,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
                     onClick={() => {
                       const next: Record<string, boolean> = {};
                       deploymentSettings?.fields.forEach(f => { next[f.key] = true; });
-                      setDeploymentCollapsed(next);
-                    }}
+                                          }}
                     className="flex items-center space-x-1 px-2.5 py-1 text-xs font-medium text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors cursor-pointer shadow-2xs"
                   >
                     <ChevronsUp className="w-3.5 h-3.5" />
@@ -996,8 +971,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
                     onClick={() => {
                       const next: Record<string, boolean> = {};
                       deploymentSettings?.fields.forEach(f => { next[f.key] = false; });
-                      setDeploymentCollapsed(next);
-                    }}
+                                          }}
                     className="flex items-center space-x-1 px-2.5 py-1 text-xs font-medium text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors cursor-pointer shadow-2xs"
                   >
                     <ChevronsDown className="w-3.5 h-3.5" />
@@ -1012,142 +986,87 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
                   Loading deployment fields configuration...
                 </div>
               ) : (
-                <div className="space-y-3">
-                  {deploymentSettings?.fields.map((field, index) => {
-                    const isFixed = field.system_fixed;
-                    const isEnabled = field.enabled;
-                    const isSelect = field.type === 'select' || field.type === 'multiselect';
-                    const isCollapsed = deploymentCollapsed[field.key] ?? true;
-                    const totalFields = deploymentSettings.fields.length;
-
-                    return (
-                      <div
-                        key={field.key}
-                        className={`border rounded-xl transition-all shadow-xs overflow-hidden ${
-                          isEnabled
-                            ? 'bg-white border-slate-200 hover:border-slate-300'
-                            : 'bg-slate-50 border-slate-200/80 opacity-80'
-                        }`}
-                      >
-                        {/* Header */}
+                                <div className="flex flex-col md:flex-row h-[700px] bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                  {/* LEFT SIDEBAR LIST */}
+                  <div className="w-full md:w-1/3 border-r border-slate-200 bg-slate-50 flex flex-col shrink-0">
+                    <div className="p-3 bg-white border-b border-slate-200 flex justify-between items-center shadow-sm z-10">
+                      <span className="font-bold text-slate-800 text-sm">Deployment Fields</span>
+                      <button type="button" onClick={() => setIsAddingDeploymentField(true)} className="text-blue-600 hover:bg-blue-50 p-1.5 rounded transition-colors" title="Add Field">
+                        <Plus className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-2 space-y-1">
+                      {deploymentSettings?.fields.map((field, index) => (
                         <div 
-                          onClick={() => setDeploymentCollapsed(prev => ({ ...prev, [field.key]: !prev[field.key] }))}
-                          className="p-3.5 sm:p-4 flex flex-col md:flex-row md:items-center justify-between gap-3 cursor-pointer hover:bg-slate-50/80 select-none transition-colors"
+                          key={field.key} 
+                          className={`flex items-center justify-between p-2.5 rounded-lg border cursor-pointer transition-all ${selectedDepFieldIndex === index ? 'bg-blue-50 border-blue-200 shadow-sm' : 'border-transparent hover:bg-slate-200/50'}`}
+                          onClick={() => setSelectedDepFieldIndex(index)}
                         >
-                          <div className="flex items-center space-x-3.5 min-w-0">
-                            {/* Order & Reorder */}
-                            <div onClick={(e) => e.stopPropagation()} className="flex items-center space-x-1 shrink-0">
-                              <span className="text-[11px] font-bold text-slate-600 bg-slate-100 px-2 py-1 rounded border border-slate-200 min-w-[28px] text-center">
-                                #{index + 1}
-                              </span>
-                              <div className="flex items-center space-x-0.5 bg-slate-100 p-0.5 rounded border border-slate-200">
-                                <button
-                                  type="button"
-                                  disabled={index === 0}
-                                  onClick={() => handleMoveDeploymentField(index, 'up')}
-                                  title="Move field up"
-                                  className="p-1 rounded text-slate-500 hover:text-blue-600 hover:bg-white disabled:opacity-25 disabled:pointer-events-none transition-colors cursor-pointer"
-                                >
-                                  <ArrowUp className="w-3 h-3" />
-                                </button>
-                                <button
-                                  type="button"
-                                  disabled={index === totalFields - 1}
-                                  onClick={() => handleMoveDeploymentField(index, 'down')}
-                                  title="Move field down"
-                                  className="p-1 rounded text-slate-500 hover:text-blue-600 hover:bg-white disabled:opacity-25 disabled:pointer-events-none transition-colors cursor-pointer"
-                                >
-                                  <ArrowDown className="w-3 h-3" />
-                                </button>
-                              </div>
-                            </div>
-
-                            {/* Title & Badges */}
-                            <div className="min-w-0 truncate">
-                              <div className="flex items-center space-x-2 flex-wrap gap-y-1">
-                                <span className="font-semibold text-slate-900 text-sm sm:text-base truncate">
-                                  {field.label}
-                                </span>
-                                <span className="text-[11px] font-mono px-2 py-0.5 bg-slate-100 text-slate-600 rounded border border-slate-200 flex items-center space-x-1">
-                                  <Database className="w-2.5 h-2.5 text-slate-400" />
-                                  <span>{field.key}</span>
-                                </span>
-                                <span className="text-[10px] font-semibold px-2 py-0.5 bg-blue-50 text-blue-700 rounded border border-blue-200 uppercase tracking-wide">
-                                  {field.type}
-                                </span>
-                                {field.allow_other && (
-                                  <span className="text-[10px] font-semibold px-1.5 py-0.5 bg-purple-50 text-purple-700 rounded border border-purple-200">
-                                    Allows &ldquo;Other&rdquo;
-                                  </span>
-                                )}
-                                {isFixed && (
-                                  <span className="text-[10px] font-semibold px-1.5 py-0.5 bg-amber-50 text-amber-700 rounded border border-amber-200 flex items-center space-x-1">
-                                    <Lock className="w-2.5 h-2.5" />
-                                    <span>Core</span>
-                                  </span>
-                                )}
-                              </div>
-                              {isCollapsed && (
-                                <p className="text-[11px] text-slate-400 truncate mt-0.5">
-                                  {isSelect 
-                                    ? `${field.options?.length || 0} options${field.allow_other ? ' + Other' : ''} • Default: "${field.default_value || 'None'}"`
-                                    : field.default_value ? `Default: "${field.default_value}"` : 'No default value set'}
-                                </p>
-                              )}
-                            </div>
+                          <div className="flex items-center gap-2.5 overflow-hidden flex-1 min-w-0">
+                            <span className="text-[10px] font-bold text-slate-500 bg-white px-1.5 py-0.5 rounded border border-slate-200 shrink-0">#{index + 1}</span>
+                            <span className={`text-sm font-semibold truncate ${selectedDepFieldIndex === index ? 'text-blue-700' : 'text-slate-700'}`}>{field.label}</span>
+                            {!field.enabled && <span className="text-[10px] text-red-500 font-bold shrink-0">OFF</span>}
                           </div>
-
-                          {/* Right Controls */}
-                          <div onClick={(e) => e.stopPropagation()} className="flex items-center space-x-3 shrink-0 self-end md:self-auto">
-                            <div className="flex items-center space-x-2 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">
-                              <span className={`text-xs font-semibold ${isEnabled ? 'text-emerald-700' : 'text-slate-500'}`}>
-                                {isEnabled ? 'Enabled' : 'Disabled'}
-                              </span>
-                              <button
-                                type="button"
-                                disabled={isFixed}
-                                onClick={() => handleToggleDeploymentEnabled(field.key)}
-                                className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                                  isFixed
-                                    ? 'bg-emerald-600 opacity-60 cursor-not-allowed'
-                                    : isEnabled
-                                    ? 'bg-emerald-600'
-                                    : 'bg-slate-300'
-                                }`}
-                              >
-                                <span
-                                  className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
-                                    isEnabled ? 'translate-x-4' : 'translate-x-0'
-                                  }`}
-                                />
-                              </button>
-                            </div>
-
-                            {!isFixed && field.key.startsWith('custom_') && (
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteDeploymentField(field.key)}
-                                className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors cursor-pointer"
-                                title="Delete custom field"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            )}
-
-                            <button
-                              type="button"
-                              onClick={() => setDeploymentCollapsed(prev => ({ ...prev, [field.key]: !prev[field.key] }))}
-                              className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
-                            >
-                              {isCollapsed ? <ChevronDown className="w-5 h-5" /> : <ChevronUp className="w-5 h-5 text-blue-600" />}
-                            </button>
+                          <div className="flex flex-col gap-0.5 shrink-0 ml-2">
+                            <button type="button" disabled={index === 0} onClick={(e) => { e.stopPropagation(); handleMoveDeploymentField(index, 'up'); }} className="text-slate-400 hover:text-blue-600 disabled:opacity-30"><ArrowUp className="w-3 h-3"/></button>
+                            <button type="button" disabled={index === deploymentSettings.fields.length - 1} onClick={(e) => { e.stopPropagation(); handleMoveDeploymentField(index, 'down'); }} className="text-slate-400 hover:text-blue-600 disabled:opacity-30"><ArrowDown className="w-3 h-3"/></button>
                           </div>
                         </div>
+                      ))}
+                    </div>
+                  </div>
 
-                        {/* Expanded Edit Form */}
-                        {!isCollapsed && (
-                          <div className="p-4 sm:p-5 bg-slate-50/70 border-t border-slate-100 space-y-5 animate-in fade-in duration-100">
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* RIGHT SIDE CONTENT */}
+                  <div className="flex-1 overflow-y-auto bg-slate-50/30">
+                    {selectedDepFieldIndex !== null && deploymentSettings?.fields[selectedDepFieldIndex] ? (
+                      <div className="p-5 animate-in fade-in duration-200">
+                        {(() => {
+                          const field = deploymentSettings.fields[selectedDepFieldIndex];
+                          const index = selectedDepFieldIndex;
+                          const isFixed = field.system_fixed;
+                          const isEnabled = field.enabled;
+                          const isSelect = field.type === 'select' || field.type === 'multiselect';
+                          return (
+                            <div className="space-y-6">
+                              {/* Header info inside edit form */}
+                              <div className="flex justify-between items-center border-b border-slate-200 pb-4">
+                                <div>
+                                  <h3 className="text-lg font-bold text-slate-800">{field.label}</h3>
+                                  <p className="text-xs text-slate-500 font-mono mt-1">{field.key}</p>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                  {!isFixed && (
+                                    <label className="flex items-center space-x-2 cursor-pointer mr-2">
+                                      <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Status:</span>
+                                      <input
+                                        type="checkbox"
+                                        checked={isEnabled}
+                                        onChange={() => handleToggleDeploymentEnabled(field.key)}
+                                        className="w-5 h-5 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
+                                      />
+                                    </label>
+                                  )}
+                                  {isFixed && <span className="text-xs font-semibold px-2 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded flex items-center gap-1"><Lock className="w-3 h-3"/> Core</span>}
+                                  <span className="text-xs font-semibold px-2 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded uppercase">{field.type}</span>
+                                  {!isFixed && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (window.confirm(`Are you sure you want to delete the field "${field.label}"?`)) {
+                                          handleDeleteDeploymentField(field.key);
+                                          setSelectedDepFieldIndex(null);
+                                        }
+                                      }}
+                                      className="ml-2 p-1.5 text-red-500 hover:bg-red-50 hover:text-red-600 rounded-lg transition-colors border border-transparent hover:border-red-200"
+                                      title="Delete Field"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                              
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                               <div>
                                 <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
                                   Field Display Name *
@@ -1404,11 +1323,20 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
                                 className="w-full px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-slate-700"
                               />
                             </div>
-                          </div>
-                        )}
+                            </div>
+                          );
+                        })()}
                       </div>
-                    );
-                  })}
+                    ) : (
+                      <div className="h-full flex flex-col items-center justify-center text-slate-400 space-y-4 p-8 text-center">
+                        <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-2">
+                          <Sliders className="w-8 h-8 text-slate-300" />
+                        </div>
+                        <p className="text-lg font-semibold text-slate-600">No Field Selected</p>
+                        <p className="text-sm max-w-xs">Select a deployment field from the sidebar to view and edit its properties.</p>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -1682,8 +1610,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
                     onClick={() => {
                       const next: Record<string, boolean> = {};
                       companySettings?.fields.forEach(f => { next[f.key] = true; });
-                      setCompanyCollapsed(next);
-                    }}
+                                          }}
                     className="flex items-center space-x-1 px-2.5 py-1 text-xs font-medium text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors cursor-pointer shadow-2xs"
                   >
                     <ChevronsUp className="w-3.5 h-3.5" />
@@ -1694,8 +1621,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
                     onClick={() => {
                       const next: Record<string, boolean> = {};
                       companySettings?.fields.forEach(f => { next[f.key] = false; });
-                      setCompanyCollapsed(next);
-                    }}
+                                          }}
                     className="flex items-center space-x-1 px-2.5 py-1 text-xs font-medium text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors cursor-pointer shadow-2xs"
                   >
                     <ChevronsDown className="w-3.5 h-3.5" />
@@ -1710,145 +1636,91 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
                   Loading company fields configuration...
                 </div>
               ) : (
-                <div className="space-y-3">
-                  {companySettings?.fields
-                    .filter(f => f.category === companyCategoryFilter)
-                    .map((field) => {
-                      const originalIndex = companySettings.fields.findIndex(item => item.key === field.key);
-                      const isFixed = field.system_fixed;
-                      const isEnabled = field.enabled;
-                      const isSelect = field.type === 'select' || field.type === 'multiselect';
-                      const isCollapsed = companyCollapsed[field.key] ?? true;
-                      const totalFields = companySettings.fields.length;
-
-                      return (
-                        <div
-                          key={field.key}
-                          className={`border rounded-xl transition-all shadow-xs overflow-hidden ${
-                            isEnabled
-                              ? 'bg-white border-slate-200 hover:border-slate-300'
-                              : 'bg-slate-50 border-slate-200/80 opacity-80'
-                          }`}
+                                <div className="flex flex-col md:flex-row h-[700px] bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                  {/* LEFT SIDEBAR LIST */}
+                  <div className="w-full md:w-1/3 border-r border-slate-200 bg-slate-50 flex flex-col shrink-0">
+                    <div className="p-3 bg-white border-b border-slate-200 flex flex-col shadow-sm z-10 gap-2">
+                      <div className="flex justify-between items-center">
+                        <span className="font-bold text-slate-800 text-sm">Company Fields</span>
+                        <button type="button" onClick={() => setIsAddingCompanyField(true)} className="text-blue-600 hover:bg-blue-50 p-1.5 rounded transition-colors" title="Add Field">
+                          <Plus className="w-4 h-4" />
+                        </button>
+                      </div>
+                      
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-2 space-y-1">
+                      {companySettings?.fields.map((field, index) => (
+                        field.category === companyCategoryFilter ? (
+                        <div 
+                          key={field.key} 
+                          className={`flex items-center justify-between p-2.5 rounded-lg border cursor-pointer transition-all ${selectedCompFieldIndex === index ? 'bg-blue-50 border-blue-200 shadow-sm' : 'border-transparent hover:bg-slate-200/50'}`}
+                          onClick={() => setSelectedCompFieldIndex(index)}
                         >
-                          {/* Header */}
-                          <div 
-                            onClick={() => setCompanyCollapsed(prev => ({ ...prev, [field.key]: !prev[field.key] }))}
-                            className="p-3.5 sm:p-4 flex flex-col md:flex-row md:items-center justify-between gap-3 cursor-pointer hover:bg-slate-50/80 select-none transition-colors"
-                          >
-                            <div className="flex items-center space-x-3.5 min-w-0">
-                              {/* Order & Reorder */}
-                              <div onClick={(e) => e.stopPropagation()} className="flex items-center space-x-1 shrink-0">
-                                <span className="text-[11px] font-bold text-slate-600 bg-slate-100 px-2 py-1 rounded border border-slate-200 min-w-[28px] text-center">
-                                  #{originalIndex + 1}
-                                </span>
-                                <div className="flex items-center space-x-0.5 bg-slate-100 p-0.5 rounded border border-slate-200">
-                                  <button
-                                    type="button"
-                                    disabled={originalIndex === 0}
-                                    onClick={() => handleMoveCompanyField(originalIndex, 'up')}
-                                    title="Move field up"
-                                    className="p-1 rounded text-slate-500 hover:text-blue-600 hover:bg-white disabled:opacity-25 disabled:pointer-events-none transition-colors cursor-pointer"
-                                  >
-                                    <ArrowUp className="w-3 h-3" />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    disabled={originalIndex === totalFields - 1}
-                                    onClick={() => handleMoveCompanyField(originalIndex, 'down')}
-                                    title="Move field down"
-                                    className="p-1 rounded text-slate-500 hover:text-blue-600 hover:bg-white disabled:opacity-25 disabled:pointer-events-none transition-colors cursor-pointer"
-                                  >
-                                    <ArrowDown className="w-3 h-3" />
-                                  </button>
-                                </div>
-                              </div>
-
-                              {/* Title & Badges */}
-                              <div className="min-w-0 truncate">
-                                <div className="flex items-center space-x-2 flex-wrap gap-y-1">
-                                  <span className="font-semibold text-slate-900 text-sm sm:text-base truncate">
-                                    {field.label}
-                                  </span>
-                                  {getCategoryBadge(field.category)}
-                                  <span className="text-[11px] font-mono px-2 py-0.5 bg-slate-100 text-slate-600 rounded border border-slate-200 flex items-center space-x-1">
-                                    <Database className="w-2.5 h-2.5 text-slate-400" />
-                                    <span>{field.key}</span>
-                                  </span>
-                                  <span className="text-[10px] font-semibold px-2 py-0.5 bg-blue-50 text-blue-700 rounded border border-blue-200 uppercase tracking-wide">
-                                    {field.type}
-                                  </span>
-                                  {field.allow_other && (
-                                    <span className="text-[10px] font-semibold px-1.5 py-0.5 bg-purple-50 text-purple-700 rounded border border-purple-200">
-                                      Allows &ldquo;Other&rdquo;
-                                    </span>
-                                  )}
-                                  {isFixed && (
-                                    <span className="text-[10px] font-semibold px-1.5 py-0.5 bg-amber-50 text-amber-700 rounded border border-amber-200 flex items-center space-x-1">
-                                      <Lock className="w-2.5 h-2.5" />
-                                      <span>Core</span>
-                                    </span>
-                                  )}
-                                </div>
-                                {isCollapsed && (
-                                  <p className="text-[11px] text-slate-400 truncate mt-0.5">
-                                    {isSelect 
-                                      ? `${field.options?.length || 0} options${field.allow_other ? ' + Other' : ''} • Default: "${field.default_value || 'None'}"`
-                                      : field.default_value ? `Default: "${field.default_value}"` : 'No default value set'}
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-
-                            {/* Right Controls */}
-                            <div onClick={(e) => e.stopPropagation()} className="flex items-center space-x-3 shrink-0 self-end md:self-auto">
-                              <div className="flex items-center space-x-2 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">
-                                <span className={`text-xs font-semibold ${isEnabled ? 'text-emerald-700' : 'text-slate-500'}`}>
-                                  {isEnabled ? 'Enabled' : 'Disabled'}
-                                </span>
-                                <button
-                                  type="button"
-                                  disabled={isFixed}
-                                  onClick={() => handleToggleCompanyEnabled(field.key)}
-                                  className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                                    isFixed
-                                      ? 'bg-emerald-600 opacity-60 cursor-not-allowed'
-                                      : isEnabled
-                                      ? 'bg-emerald-600'
-                                      : 'bg-slate-300'
-                                  }`}
-                                >
-                                  <span
-                                    className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
-                                      isEnabled ? 'translate-x-4' : 'translate-x-0'
-                                    }`}
-                                  />
-                                </button>
-                              </div>
-
-                              {!isFixed && field.key.startsWith('custom_') && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteCompanyField(field.key)}
-                                  className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors cursor-pointer"
-                                  title="Delete custom company field"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              )}
-
-                              <button
-                                type="button"
-                                onClick={() => setCompanyCollapsed(prev => ({ ...prev, [field.key]: !prev[field.key] }))}
-                                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
-                              >
-                                {isCollapsed ? <ChevronDown className="w-5 h-5" /> : <ChevronUp className="w-5 h-5 text-blue-600" />}
-                              </button>
-                            </div>
+                          <div className="flex items-center gap-2.5 overflow-hidden flex-1 min-w-0">
+                            <span className="text-[10px] font-bold text-slate-500 bg-white px-1.5 py-0.5 rounded border border-slate-200 shrink-0">#{index + 1}</span>
+                            <span className={`text-sm font-semibold truncate ${selectedCompFieldIndex === index ? 'text-blue-700' : 'text-slate-700'}`}>{field.label}</span>
+                            {!field.enabled && <span className="text-[10px] text-red-500 font-bold shrink-0">OFF</span>}
                           </div>
+                          <div className="flex flex-col gap-0.5 shrink-0 ml-2">
+                            <button type="button" disabled={index === 0} onClick={(e) => { e.stopPropagation(); handleMoveCompanyField(index, 'up'); }} className="text-slate-400 hover:text-blue-600 disabled:opacity-30"><ArrowUp className="w-3 h-3"/></button>
+                            <button type="button" disabled={index === companySettings.fields.length - 1} onClick={(e) => { e.stopPropagation(); handleMoveCompanyField(index, 'down'); }} className="text-slate-400 hover:text-blue-600 disabled:opacity-30"><ArrowDown className="w-3 h-3"/></button>
+                          </div>
+                        </div>
+                        ) : null
+                      ))}
+                    </div>
+                  </div>
 
-                          {/* Expanded Edit Form */}
-                          {!isCollapsed && (
-                            <div className="p-4 sm:p-5 bg-slate-50/70 border-t border-slate-100 space-y-5 animate-in fade-in duration-100">
+                  {/* RIGHT SIDE CONTENT */}
+                  <div className="flex-1 overflow-y-auto bg-slate-50/30">
+                    {selectedCompFieldIndex !== null && companySettings?.fields[selectedCompFieldIndex] ? (
+                      <div className="p-5 animate-in fade-in duration-200">
+                        {(() => {
+                          const field = companySettings.fields[selectedCompFieldIndex];
+                          const originalIndex = selectedCompFieldIndex;
+                          const isFixed = field.system_fixed;
+                          const isEnabled = field.enabled;
+                          const isSelect = field.type === 'select' || field.type === 'multiselect';
+                          return (
+                            <div className="space-y-6">
+                              {/* Header info inside edit form */}
+                              <div className="flex justify-between items-center border-b border-slate-200 pb-4">
+                                <div>
+                                  <h3 className="text-lg font-bold text-slate-800">{field.label}</h3>
+                                  <p className="text-xs text-slate-500 font-mono mt-1">{field.key}</p>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                  {!isFixed && (
+                                    <label className="flex items-center space-x-2 cursor-pointer mr-2">
+                                      <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Status:</span>
+                                      <input
+                                        type="checkbox"
+                                        checked={isEnabled}
+                                        onChange={() => handleToggleCompanyEnabled(field.key)}
+                                        className="w-5 h-5 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
+                                      />
+                                    </label>
+                                  )}
+                                  {isFixed && <span className="text-xs font-semibold px-2 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded flex items-center gap-1"><Lock className="w-3 h-3"/> Core</span>}
+                                  <span className="text-xs font-semibold px-2 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded uppercase">{field.type}</span>
+                                  {!isFixed && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (window.confirm(`Are you sure you want to delete the field "${field.label}"?`)) {
+                                          handleDeleteCompanyField(field.key);
+                                          setSelectedCompFieldIndex(null);
+                                        }
+                                      }}
+                                      className="ml-2 p-1.5 text-red-500 hover:bg-red-50 hover:text-red-600 rounded-lg transition-colors border border-transparent hover:border-red-200"
+                                      title="Delete Field"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                              
                               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                                 <div>
                                   <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
@@ -2116,10 +1988,19 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
                                 />
                               </div>
                             </div>
-                          )}
+                          );
+                        })()}
+                      </div>
+                    ) : (
+                      <div className="h-full flex flex-col items-center justify-center text-slate-400 space-y-4 p-8 text-center">
+                        <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-2">
+                          <Building2 className="w-8 h-8 text-slate-300" />
                         </div>
-                      );
-                    })}
+                        <p className="text-lg font-semibold text-slate-600">No Field Selected</p>
+                        <p className="text-sm max-w-xs">Select a company field from the sidebar to view and edit its properties.</p>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -2311,10 +2192,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
             </div>
           )}
         </div>
-      )}
-
       {/* ==================== SECTION 3: REGION DATA ==================== */}
-      {isAdmin && adminTab === 'regions' && (
+      {adminTab === 'regions' && (
         <div className="space-y-6 animate-in fade-in duration-300">
           <div className="bg-white border border-slate-200 rounded-xl p-5 sm:p-6 shadow-sm">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
@@ -2438,7 +2317,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
       )}
 
       {/* ==================== SECTION 4: DATA & SYSTEM MAINTENANCE ==================== */}
-      {isAdmin && adminTab === 'data' && (
+      {adminTab === 'data' && (
         <div className="space-y-6 animate-in fade-in duration-300">
           {/* Batch Data Import Card */}
           <div className="bg-white border border-slate-200 rounded-xl p-5 sm:p-6 shadow-sm space-y-4">
@@ -2521,7 +2400,11 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
         </div>
       )}
 
-      {/* Excel / CSV Import Modal */}
+        </div>
+        </div>
+      )}
+
+{/* Excel / CSV Import Modal */}
       <ExcelImportModal
         isOpen={isImportModalOpen}
         onClose={() => setIsImportModalOpen(false)}
