@@ -884,21 +884,70 @@ async def merge_field_option(
     return {"success": True, "merged_count": merged_count, "settings": data}
 
 DEFAULT_REGION_SETTINGS = [
-    {"state": "Johor", "districts": ["Johor Bahru", "Batu Pahat", "Kluang"]},
-    {"state": "Kedah", "districts": ["Alor Setar", "Sungai Petani", "Kulim"]},
-    {"state": "Kelantan", "districts": ["Kota Bharu", "Pasir Mas", "Tanah Merah"]},
-    {"state": "Kuala Lumpur", "districts": ["Kuala Lumpur", "Cheras", "Kepong"]},
-    {"state": "Melaka", "districts": ["Melaka City", "Alor Gajah", "Jasin"]},
-    {"state": "Negeri Sembilan", "districts": ["Seremban", "Port Dickson", "Nilai"]},
-    {"state": "Pahang", "districts": ["Kuantan", "Temerloh", "Bentong"]},
-    {"state": "Penang", "districts": ["George Town", "Butterworth", "Bayan Lepas"]},
-    {"state": "Perak", "districts": ["Ipoh", "Taiping", "Teluk Intan"]},
-    {"state": "Perlis", "districts": ["Kangar", "Arau"]},
-    {"state": "Putrajaya", "districts": ["Putrajaya"]},
-    {"state": "Sabah", "districts": ["Kota Kinabalu", "Sandakan", "Tawau"]},
-    {"state": "Sarawak", "districts": ["Kuching", "Miri", "Sibu"]},
-    {"state": "Selangor", "districts": ["Shah Alam", "Petaling Jaya", "Subang Jaya", "Klang"]},
-    {"state": "Terengganu", "districts": ["Kuala Terengganu", "Kemaman", "Dungun"]}
+    {
+        "state": "Johor",
+        "districts": ["Batu Pahat", "Johor Bahru", "Kluang", "Kota Tinggi", "Kulai", "Mersing", "Muar", "Pontian", "Segamat", "Tangkak"]
+    },
+    {
+        "state": "Kedah",
+        "districts": ["Baling", "Bandar Baharu", "Kota Setar", "Kuala Muda", "Kubang Pasu", "Kulim", "Langkawi", "Padang Terap", "Pendang", "Pokok Sena", "Sik", "Yan"]
+    },
+    {
+        "state": "Kelantan",
+        "districts": ["Bachok", "Gua Musang", "Jeli", "Kota Bharu", "Kuala Krai", "Machang", "Pasir Mas", "Pasir Puteh", "Tanah Merah", "Tumpat"]
+    },
+    {
+        "state": "Kuala Lumpur",
+        "districts": ["Kuala Lumpur"]
+    },
+    {
+        "state": "Labuan",
+        "districts": ["Labuan"]
+    },
+    {
+        "state": "Melaka",
+        "districts": ["Alor Gajah", "Jasin", "Melaka Tengah"]
+    },
+    {
+        "state": "Negeri Sembilan",
+        "districts": ["Jelebu", "Jempol", "Kuala Pilah", "Port Dickson", "Rembau", "Seremban", "Tampin"]
+    },
+    {
+        "state": "Pahang",
+        "districts": ["Bentong", "Bera", "Cameron Highlands", "Jerantut", "Kuantan", "Lipis", "Maran", "Pekan", "Raub", "Rompin", "Temerloh"]
+    },
+    {
+        "state": "Penang",
+        "districts": ["Barat Daya", "Seberang Perai Selatan", "Seberang Perai Tengah", "Seberang Perai Utara", "Timur Laut"]
+    },
+    {
+        "state": "Perak",
+        "districts": ["Bagan Datuk", "Batang Padang", "Hilir Perak", "Hulu Perak", "Kampar", "Kerian", "Kinta", "Kuala Kangsar", "Larut, Matang dan Selama", "Manjung", "Muallim", "Perak Tengah"]
+    },
+    {
+        "state": "Perlis",
+        "districts": ["Perlis"]
+    },
+    {
+        "state": "Putrajaya",
+        "districts": ["Putrajaya"]
+    },
+    {
+        "state": "Sabah",
+        "districts": ["Beaufort", "Beluran", "Keningau", "Kinabatangan", "Kota Belud", "Kota Kinabalu", "Kota Marudu", "Kuala Penyu", "Kudat", "Kunak", "Lahad Datu", "Nabawan", "Papar", "Penampang", "Pitas", "Putatan", "Ranau", "Sandakan", "Semporna", "Sipitang", "Tambunan", "Tawau", "Tenom", "Tongod", "Tuaran"]
+    },
+    {
+        "state": "Sarawak",
+        "districts": ["Asajaya", "Bau", "Belaga", "Beluru", "Betong", "Bintulu", "Bukit Mabong", "Dalat", "Daro", "Julau", "Kabong", "Kanowit", "Kapit", "Kuching", "Lawas", "Limbang", "Lubok Antu", "Lundu", "Marudi", "Matu", "Meradong", "Miri", "Mukah", "Pakan", "Pusa", "Samarahan", "Saratok", "Sarikei", "Sebauh", "Selangau", "Serian", "Sibu", "Simunjan", "Song", "Sri Aman", "Subis", "Tanjung Manis", "Tatau", "Tebedu"]
+    },
+    {
+        "state": "Selangor",
+        "districts": ["Gombak", "Hulu Langat", "Hulu Selangor", "Klang", "Kuala Langat", "Kuala Selangor", "Petaling", "Sabak Bernam", "Sepang"]
+    },
+    {
+        "state": "Terengganu",
+        "districts": ["Besut", "Dungun", "Hulu Terengganu", "Kemaman", "Kuala Nerus", "Kuala Terengganu", "Marang", "Setiu"]
+    }
 ]
 
 @router.get("/states-districts")

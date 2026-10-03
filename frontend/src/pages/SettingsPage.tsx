@@ -58,6 +58,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
   const [adminTab, setAdminTab] = useState<'deployment' | 'company' | 'regions' | 'data' | 'users'>('deployment');
   const [selectedDepFieldIndex, setSelectedDepFieldIndex] = useState<number | null>(null);
   const [selectedCompFieldIndex, setSelectedCompFieldIndex] = useState<number | null>(null);
+  const [selectedRegionIndex, setSelectedRegionIndex] = useState<number | null>(0);
 
   // Deployment Settings State
   const [deploymentSettings, setDeploymentSettings] = useState<DeploymentFieldsSettings | null>(null);
@@ -2191,132 +2192,202 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
               )}
             </div>
           )}
-        </div>
-      {/* ==================== SECTION 3: REGION DATA ==================== */}
+   {/* ==================== SECTION 3: REGION DATA ==================== */}
       {adminTab === 'regions' && (
-        <div className="space-y-6 animate-in fade-in duration-300">
-          <div className="bg-white border border-slate-200 rounded-xl p-5 sm:p-6 shadow-sm">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-              <div>
-                <h2 className="text-lg font-bold text-slate-900 flex items-center space-x-2">
-                  <MapPin className="w-5 h-5 text-blue-600" />
-                  <span>Malaysian States & Districts</span>
-                </h2>
-                <p className="text-xs text-slate-500 mt-1 max-w-xl">
-                  Manage the list of states and their corresponding districts. These are dynamically loaded in the Location configuration dropdowns.
-                </p>
+        <div className="space-y-5">
+          {/* Subheader bar */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-slate-900 text-white p-4 sm:p-5 rounded-xl shadow-md">
+            <div>
+              <div className="flex items-center space-x-2">
+                <MapPin className="w-5 h-5 text-blue-400" />
+                <h2 className="text-lg font-bold">Malaysian States & Districts</h2>
               </div>
-              <div className="flex items-center space-x-3 shrink-0">
-                <button
-                  type="button"
-                  onClick={handleSaveRegions}
-                  disabled={!regionsHasChanges || savingRegions}
-                  className={`flex items-center space-x-1.5 px-4 py-2 text-xs font-semibold rounded-lg shadow-sm transition-all ${
-                    regionsHasChanges
-                      ? 'bg-blue-600 text-white hover:bg-blue-700 cursor-pointer'
-                      : 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                  }`}
-                >
-                  {savingRegions ? (
-                    <span>Saving...</span>
-                  ) : (
-                    <>
-                      <Check className="w-4 h-4" />
-                      <span>Save Changes</span>
-                    </>
-                  )}
-                </button>
+              <p className="text-xs text-slate-400 mt-1 max-w-xl">
+                Manage the list of states and their corresponding districts. These are dynamically loaded in the Location configuration dropdowns.
+              </p>
+            </div>
+
+            <div className="flex items-center space-x-3">
+              <button
+                type="button"
+                onClick={handleSaveRegions}
+                disabled={!regionsHasChanges || savingRegions}
+                className={`flex items-center space-x-1.5 px-3 py-2 text-xs font-semibold rounded-lg shadow-sm transition-all ${
+                  regionsHasChanges
+                    ? 'bg-blue-600 text-white hover:bg-blue-500 ring-2 ring-blue-400/50 cursor-pointer'
+                    : 'bg-slate-800 text-slate-400 border border-slate-700 cursor-not-allowed'
+                }`}
+              >
+                {savingRegions ? (
+                  <span>Saving...</span>
+                ) : (
+                  <>
+                    <Check className="w-4 h-4" />
+                    <span>Save Changes</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* MASTER-DETAIL LAYOUT */}
+          <div className="flex flex-col md:flex-row h-[700px] bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+            {/* LEFT SIDEBAR LIST */}
+            <div className="w-full md:w-1/3 border-r border-slate-200 bg-slate-50 flex flex-col shrink-0">
+              <div className="p-3 bg-white border-b border-slate-200 flex flex-col shadow-sm z-10 gap-2">
+                <div className="flex justify-between items-center">
+                  <span className="font-bold text-slate-800 text-sm">States ({regions.length})</span>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="text"
+                    value={newRegionStateInput}
+                    onChange={(e) => setNewRegionStateInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleAddState();
+                      }
+                    }}
+                    placeholder="Add State..."
+                    className="flex-1 text-xs bg-white border border-slate-200 px-2.5 py-1.5 rounded focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddState}
+                    disabled={!newRegionStateInput.trim()}
+                    className="p-1.5 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded disabled:opacity-50 transition-colors cursor-pointer shrink-0"
+                    title="Add State"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+              <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">
+                {regions.map((region, index) => (
+                  <div 
+                    key={region.state} 
+                    className={`flex items-center justify-between p-2.5 rounded-lg border cursor-pointer transition-all ${selectedRegionIndex === index ? 'bg-blue-50 border-blue-200 shadow-sm' : 'border-transparent hover:bg-slate-200/50'}`}
+                    onClick={() => setSelectedRegionIndex(index)}
+                  >
+                    <div className="flex items-center gap-2.5 overflow-hidden flex-1 min-w-0">
+                      <MapPin className={`w-3.5 h-3.5 shrink-0 ${selectedRegionIndex === index ? 'text-blue-500' : 'text-slate-400'}`} />
+                      <span className={`text-sm font-semibold truncate ${selectedRegionIndex === index ? 'text-blue-700' : 'text-slate-700'}`}>{region.state}</span>
+                    </div>
+                    <div className="text-[10px] font-bold text-slate-400 bg-white px-1.5 py-0.5 rounded border border-slate-200 shrink-0">
+                      {region.districts.length}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
 
-            <div className="space-y-4">
-              {regions.map((region, index) => (
-                <div key={index} className="border border-slate-200 rounded-xl bg-white overflow-hidden">
-                  <div className="p-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
-                    <span className="font-semibold text-slate-800">{region.state}</span>
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteState(region.state)}
-                      className="text-slate-400 hover:text-red-600 transition-colors cursor-pointer"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                  <div className="p-4">
-                    <div className="flex flex-wrap gap-2 mb-4">
-                      {region.districts.map(d => (
-                        <div key={d} className="flex items-center space-x-1 bg-white border border-slate-200 px-2.5 py-1 rounded-md text-xs font-medium text-slate-700 shadow-xs">
-                          <span>{d}</span>
+            {/* RIGHT SIDE CONTENT */}
+            <div className="flex-1 overflow-y-auto bg-slate-50/30">
+              {selectedRegionIndex !== null && regions[selectedRegionIndex] ? (
+                <div className="p-5 animate-in fade-in duration-200 h-full flex flex-col">
+                  {(() => {
+                    const region = regions[selectedRegionIndex];
+                    return (
+                      <div className="space-y-6 flex-1 flex flex-col">
+                        {/* Header */}
+                        <div className="flex justify-between items-center border-b border-slate-200 pb-4">
+                          <div>
+                            <h3 className="text-lg font-bold text-slate-800">{region.state}</h3>
+                            <p className="text-xs text-slate-500 font-mono mt-1">Manage districts for this state</p>
+                          </div>
                           <button
                             type="button"
-                            onClick={() => handleDeleteDistrict(region.state, d)}
-                            className="text-slate-400 hover:text-red-500 rounded cursor-pointer"
+                            onClick={() => {
+                              if (window.confirm(`Are you sure you want to delete the state "${region.state}" and all its districts?`)) {
+                                handleDeleteState(region.state);
+                                setSelectedRegionIndex(null);
+                              }
+                            }}
+                            className="p-2 text-red-500 hover:bg-red-50 hover:text-red-600 rounded-lg transition-colors border border-transparent hover:border-red-200 flex items-center gap-1.5 text-xs font-semibold cursor-pointer"
+                            title="Delete State"
                           >
-                            &times;
+                            <Trash2 className="w-4 h-4" />
+                            <span>Delete State</span>
                           </button>
                         </div>
-                      ))}
-                      {region.districts.length === 0 && (
-                        <span className="text-xs text-slate-400 italic">No districts added yet.</span>
-                      )}
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <input
-                        type="text"
-                        value={newRegionDistrictInputs[region.state] || ''}
-                        onChange={(e) => setNewRegionDistrictInputs(prev => ({ ...prev, [region.state]: e.target.value }))}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            handleAddDistrict(region.state);
-                          }
-                        }}
-                        placeholder="Type new district name..."
-                        className="flex-1 text-sm bg-white border border-slate-200 px-3 py-1.5 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => handleAddDistrict(region.state)}
-                        disabled={!newRegionDistrictInputs[region.state]?.trim()}
-                        className="px-3 py-1.5 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg disabled:opacity-50 transition-colors cursor-pointer"
-                      >
-                        Add
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))}
+                        
+                        {/* Districts Manager */}
+                        <div className="flex-1 bg-white border border-slate-200 rounded-xl p-5 shadow-sm flex flex-col">
+                          <div className="flex items-center justify-between mb-3">
+                            <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wide">Districts ({region.districts.length})</label>
+                            <span className="text-[11px] text-slate-500 font-medium">Sorted Alphabetically</span>
+                          </div>
+                          
+                          <div className="bg-white border border-slate-200 rounded-xl shadow-2xs divide-y divide-slate-100 overflow-hidden flex-1 max-h-[400px] overflow-y-auto custom-scrollbar">
+                            {region.districts.length === 0 ? (
+                              <div className="px-4 py-3 text-xs text-slate-400 italic">No districts added yet.</div>
+                            ) : (
+                              [...region.districts].sort((a, b) => a.localeCompare(b)).map(d => (
+                                <div
+                                  key={d}
+                                  className="flex items-center justify-between px-3.5 py-2.5 hover:bg-slate-50/80 transition-colors text-xs"
+                                >
+                                  <div className="flex items-center space-x-2.5 min-w-0 pr-2">
+                                    <span className="font-semibold text-slate-800 truncate">{d}</span>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteDistrict(region.state, d)}
+                                    className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
+                                    title="Delete District"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              ))
+                            )}
+                          </div>
 
-              <div className="pt-4 border-t border-slate-100 flex items-center space-x-3">
-                <input
-                  type="text"
-                  value={newRegionStateInput}
-                  onChange={(e) => setNewRegionStateInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      handleAddState();
-                    }
-                  }}
-                  placeholder="Add a new Malaysian State..."
-                  className="flex-1 max-w-sm text-sm bg-white border border-slate-200 px-3 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                />
-                <button
-                  type="button"
-                  onClick={handleAddState}
-                  disabled={!newRegionStateInput.trim()}
-                  className="px-4 py-2 text-xs font-semibold text-white bg-slate-800 hover:bg-slate-900 rounded-lg shadow-sm disabled:opacity-50 transition-colors cursor-pointer flex items-center space-x-1"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>Add State</span>
-                </button>
-              </div>
+                          <div className="mt-4 pt-4 border-t border-slate-100 flex items-center space-x-2">
+                            <input
+                              type="text"
+                              value={newRegionDistrictInputs[region.state] || ''}
+                              onChange={(e) => setNewRegionDistrictInputs(prev => ({ ...prev, [region.state]: e.target.value }))}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  handleAddDistrict(region.state);
+                                }
+                              }}
+                              placeholder={`Add a new district to ${region.state}...`}
+                              className="flex-1 text-sm bg-white border border-slate-200 px-3 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleAddDistrict(region.state)}
+                              disabled={!newRegionDistrictInputs[region.state]?.trim()}
+                              className="px-4 py-2 text-xs font-semibold text-white bg-slate-800 hover:bg-slate-900 rounded-lg shadow-sm disabled:opacity-50 transition-colors cursor-pointer flex items-center gap-1.5"
+                            >
+                              <Plus className="w-4 h-4" />
+                              <span>Add</span>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              ) : (
+                <div className="h-full flex flex-col items-center justify-center text-slate-400 space-y-4 p-8 text-center">
+                  <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-2">
+                    <MapPin className="w-8 h-8 text-slate-300" />
+                  </div>
+                  <p className="text-lg font-semibold text-slate-600">No State Selected</p>
+                  <p className="text-sm max-w-xs">Select a state from the sidebar to manage its districts.</p>
+                </div>
+              )}
             </div>
           </div>
         </div>
       )}
 
-      {/* ==================== SECTION 4: DATA & SYSTEM MAINTENANCE ==================== */}
+         {/* ==================== SECTION 4: DATA & SYSTEM MAINTENANCE ==================== */}
       {adminTab === 'data' && (
         <div className="space-y-6 animate-in fade-in duration-300">
           {/* Batch Data Import Card */}
@@ -2399,12 +2470,12 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ type }) => {
           </div>
         </div>
       )}
-
-        </div>
+            </div>
+          </div>
         </div>
       )}
 
-{/* Excel / CSV Import Modal */}
+      {/* Excel / CSV Import Modal */}
       <ExcelImportModal
         isOpen={isImportModalOpen}
         onClose={() => setIsImportModalOpen(false)}
