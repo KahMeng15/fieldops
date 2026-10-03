@@ -56,7 +56,7 @@ export const Navbar = () => {
 
   const navItems = [
     { name: 'Dashboard', path: '/', icon: LayoutDashboard },
-    { name: 'Companies & Locations', path: '/companies', icon: Building2 },
+    { name: 'Companies', path: '/companies', icon: Building2 },
     { name: 'Deployments', path: '/deployments', icon: Server },
   ];
 
@@ -73,7 +73,7 @@ export const Navbar = () => {
               <span className="font-bold text-lg tracking-tight">FieldOps</span>
             </NavLink>
 
-            <div className="flex space-x-1">
+            <div className="flex h-16 space-x-6 ml-4">
               {navItems.map(item => {
                 const Icon = item.icon;
                 const isActive = item.path === '/' 
@@ -84,10 +84,10 @@ export const Navbar = () => {
                   <NavLink
                     key={item.name}
                     to={item.path}
-                    className={`flex items-center space-x-2 px-3.5 py-2 rounded-md text-sm font-medium transition-all ${
+                    className={`flex items-center space-x-2 px-1 h-full text-sm font-medium transition-colors border-b-2 ${
                       isActive
-                        ? 'bg-slate-800 text-blue-400 border border-slate-700/60 shadow-sm'
-                        : 'text-slate-300 hover:bg-slate-800/70 hover:text-white'
+                        ? 'border-blue-400 text-blue-400'
+                        : 'border-transparent text-slate-400 hover:text-slate-200 hover:border-slate-600'
                     }`}
                   >
                     <Icon className={`w-4 h-4 ${isActive ? 'text-blue-400' : 'text-slate-400'}`} />

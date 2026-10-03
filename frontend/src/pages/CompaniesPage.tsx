@@ -2,7 +2,7 @@ import { formatDate } from '../utils/dateFormatter';
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
-  Building2, 
+  Building2,
   MapPin, 
   Server, 
   Plus, 
@@ -73,17 +73,10 @@ export const CompaniesPage: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-slate-200">
         <div>
-          <div className="flex items-center space-x-2.5">
-            <div className="w-10 h-10 rounded-lg bg-blue-600 flex items-center justify-center text-white shadow-sm">
-              <Building2 className="w-5 h-5" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Companies & Locations</h1>
-              <p className="text-sm text-slate-500">
-                Organize client organizations, configure their datacenter locations, and track deployment records over time.
-              </p>
-            </div>
-          </div>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">Companies</h1>
+          <p className="text-sm text-slate-500 mt-1">
+            Organize client organizations, configure their datacenter locations, and track deployment records over time.
+          </p>
         </div>
 
         <div className="flex items-center space-x-3">
