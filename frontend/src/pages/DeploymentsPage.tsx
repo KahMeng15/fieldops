@@ -128,33 +128,25 @@ export const DeploymentsPage = () => {
   };
 
 
+
   const renderGridCard = (d: DeploymentData) => (
     <div key={d.id} className="bg-white border border-slate-200 hover:border-blue-300 rounded-xl shadow-xs hover:shadow-md transition-all flex flex-col overflow-hidden">
       <div className="p-5 space-y-4">
         <div className="flex items-start justify-between gap-3">
-          <div className="flex items-center space-x-3">
-            <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-700 border border-blue-100 flex items-center justify-center font-bold text-sm shrink-0">
-              {d.customer_name ? d.customer_name.charAt(0).toUpperCase() : 'C'}
-            </div>
-            <div>
-              <Link to={`/deployments/${d.id}`} className="font-semibold text-sm text-slate-900 hover:text-blue-600 transition-colors block line-clamp-1">
-                {d.customer_name}
-              </Link>
-              {d.internal_group_name && (
-                <span className="text-[11px] text-slate-400 font-mono line-clamp-1">
-                  {d.internal_group_name}
-                </span>
-              )}
-            </div>
+          <div>
+            <Link to={`/deployments/${d.id}`} className="font-semibold text-sm text-slate-900 hover:text-blue-600 transition-colors block line-clamp-1">
+              {d.customer_name}
+            </Link>
+            {d.internal_group_name && (
+              <span className="text-[11px] text-slate-400 font-mono line-clamp-1">
+                {d.internal_group_name}
+              </span>
+            )}
           </div>
           {renderActions(d)}
         </div>
 
-        <div className="grid grid-cols-2 gap-2 text-xs text-slate-600">
-          <div className="flex items-center space-x-1.5 truncate">
-            <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-            <span className="truncate">{d.location}</span>
-          </div>
+        <div className="flex items-center gap-4 text-xs text-slate-600">
           <div className="flex items-center space-x-1.5 truncate">
             <Package className="w-3.5 h-3.5 text-slate-400 shrink-0" />
             <span className="truncate font-medium">{d.deployed_product || 'FieldOps Core'}</span>
@@ -163,15 +155,11 @@ export const DeploymentsPage = () => {
             <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
             <span className="truncate">{d.account_owner || '—'}</span>
           </div>
-          <div className="flex items-center space-x-1.5 truncate">
-            <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-            <span className="truncate">{d.deployment_date ? formatDate(d.deployment_date) : formatDate(d.created_at)}</span>
-          </div>
         </div>
       </div>
       <div className="px-5 py-3 bg-slate-50/80 border-t border-slate-100 flex items-center justify-between">
         <span className="inline-flex items-center space-x-1 text-[11px] px-2 py-0.5 rounded-md bg-white border border-slate-200 text-slate-600">
-          <Layers className="w-3 h-3 text-slate-400" />
+          {d.deployment_type === 'POC' ? <FlaskConical className="w-3 h-3 text-slate-400" /> : <Rocket className="w-3 h-3 text-slate-400" />}
           <span>{d.deployment_type}</span>
         </span>
         {renderStatusBadge(d)}
@@ -182,15 +170,11 @@ export const DeploymentsPage = () => {
   const renderListCard = (d: DeploymentData) => (
     <div key={d.id} className="bg-white border border-slate-200 hover:border-blue-300 rounded-xl shadow-xs hover:shadow-md transition-all flex flex-col md:flex-row items-center justify-between p-4 gap-4">
       <div className="flex items-center space-x-4 flex-1 min-w-0">
-        <div className="w-10 h-10 rounded-lg bg-blue-50 text-blue-700 border border-blue-100 flex items-center justify-center font-bold text-base shrink-0">
-          {d.customer_name ? d.customer_name.charAt(0).toUpperCase() : 'C'}
-        </div>
         <div className="min-w-0">
           <Link to={`/deployments/${d.id}`} className="font-semibold text-sm text-slate-900 hover:text-blue-600 transition-colors block line-clamp-1">
             {d.customer_name}
           </Link>
           <div className="flex items-center space-x-3 text-[11px] text-slate-500 mt-0.5">
-            <span className="flex items-center space-x-1 truncate"><MapPin className="w-3 h-3" /><span className="truncate">{d.location}</span></span>
             <span className="flex items-center space-x-1 truncate"><Package className="w-3 h-3" /><span className="truncate">{d.deployed_product || 'FieldOps Core'}</span></span>
           </div>
         </div>
@@ -203,7 +187,8 @@ export const DeploymentsPage = () => {
         </div>
         <div className="w-24 shrink-0 flex justify-end">
           <span className="inline-flex items-center space-x-1 text-[11px] px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-slate-600">
-            {d.deployment_type}
+            {d.deployment_type === 'POC' ? <FlaskConical className="w-3 h-3 text-slate-400" /> : <Rocket className="w-3 h-3 text-slate-400" />}
+            <span>{d.deployment_type}</span>
           </span>
         </div>
         <div className="w-36 shrink-0 flex justify-end">
@@ -292,30 +277,18 @@ export const DeploymentsPage = () => {
   const renderTableRow = (d: DeploymentData) => (
     <tr key={d.id} className="hover:bg-slate-50/70 transition-colors">
       <td className={`px-6 whitespace-nowrap ${viewMode === 'table-compact' ? 'py-2' : 'py-4'}`}>
-        <div className="flex items-center space-x-3">
-          <div className={`w-9 h-9 rounded-lg bg-blue-50 text-blue-700 border border-blue-100 flex items-center justify-center font-bold text-sm ${viewMode === 'table-compact' ? 'scale-75 origin-left' : ''}`}>
-            {d.customer_name ? d.customer_name.charAt(0).toUpperCase() : 'C'}
-          </div>
-          <div>
-            <Link 
-              to={`/deployments/${d.id}`}
-              className="font-semibold text-sm text-slate-900 hover:text-blue-600 transition-colors block"
-            >
-              {d.customer_name}
-            </Link>
-            {d.internal_group_name && (
-              <span className="text-xs text-slate-400 font-mono">
-                {d.internal_group_name}
-              </span>
-            )}
-          </div>
-        </div>
-      </td>
-
-      <td className={`px-6 whitespace-nowrap ${viewMode === 'table-compact' ? 'py-2' : 'py-4'}`}>
-        <div className="flex items-center space-x-1.5 text-sm text-slate-600">
-          <MapPin className="w-3.5 h-3.5 text-slate-400" />
-          <span>{d.location}</span>
+        <div>
+          <Link 
+            to={`/deployments/${d.id}`}
+            className="font-semibold text-sm text-slate-900 hover:text-blue-600 transition-colors block"
+          >
+            {d.customer_name}
+          </Link>
+          {d.internal_group_name && (
+            <span className="text-xs text-slate-400 font-mono">
+              {d.internal_group_name}
+            </span>
+          )}
         </div>
       </td>
 
@@ -343,24 +316,13 @@ export const DeploymentsPage = () => {
 
       <td className={`px-6 whitespace-nowrap ${viewMode === 'table-compact' ? 'py-2' : 'py-4'}`}>
         <span className="inline-flex items-center space-x-1 text-xs px-2.5 py-1 rounded-md bg-slate-100 font-medium text-slate-700 border border-slate-200">
-          <Layers className="w-3 h-3 text-slate-500" />
+          {d.deployment_type === 'POC' ? <FlaskConical className="w-3 h-3 text-slate-500" /> : <Rocket className="w-3 h-3 text-slate-500" />}
           <span>{d.deployment_type}</span>
         </span>
       </td>
 
       <td className={`px-6 whitespace-nowrap ${viewMode === 'table-compact' ? 'py-2' : 'py-4'}`}>
         {renderStatusBadge(d)}
-      </td>
-
-      <td className={`px-6 whitespace-nowrap text-xs text-slate-500 ${viewMode === 'table-compact' ? 'py-2' : 'py-4'}`}>
-        <div className="flex items-center space-x-1.5">
-          <Calendar className="w-3.5 h-3.5 text-slate-400" />
-          <span>
-            {d.deployment_date 
-              ? formatDate(d.deployment_date)
-              : formatDate(d.created_at)}
-          </span>
-        </div>
       </td>
 
       <td className={`px-6 whitespace-nowrap text-right text-xs font-medium ${viewMode === 'table-compact' ? 'py-2' : 'py-4'}`}>
@@ -379,6 +341,7 @@ export const DeploymentsPage = () => {
   );
 
   const renderActions = (d: DeploymentData) => (
+
     <div className="relative inline-block text-left">
       <button
         type="button"
@@ -440,25 +403,25 @@ export const DeploymentsPage = () => {
         <div className="flex items-center space-x-2 self-start sm:self-auto">
           <button
             onClick={() => setIsModalOpen(true)}
-            className="flex items-center space-x-2 px-4 py-2.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm hover:shadow transition-all cursor-pointer"
+            className="flex items-center justify-center p-2.5 text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm hover:shadow transition-all cursor-pointer"
+            title="New Deployment"
           >
-            <Plus className="w-4 h-4" />
-            <span>New Deployment</span>
+            <Plus className="w-5 h-5" />
           </button>
         </div>
       </div>
 
-      {/* Filters Bar */}
-      <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs flex flex-col md:flex-row gap-3 items-center justify-between">
+      {/* Search and Filters */}
+      <div className="flex items-center justify-between gap-4">
         {/* Search Input */}
-        <div className="relative w-full md:w-80">
+        <div className="relative max-w-md w-full">
           <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
           <input
             type="text"
             placeholder="Search by customer, location, or group..."
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="w-full pl-9 pr-4 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 shadow-xs"
           />
         </div>
 
@@ -541,12 +504,10 @@ export const DeploymentsPage = () => {
                   <thead className="bg-slate-50 text-slate-600">
                     <tr>
                       <th className={`px-6 text-left text-xs font-semibold uppercase tracking-wider ${viewMode === 'table-compact' ? 'py-2' : 'py-3.5'}`}>Company / Customer</th>
-                      <th className={`px-6 text-left text-xs font-semibold uppercase tracking-wider ${viewMode === 'table-compact' ? 'py-2' : 'py-3.5'}`}>Location</th>
                       <th className={`px-6 text-left text-xs font-semibold uppercase tracking-wider ${viewMode === 'table-compact' ? 'py-2' : 'py-3.5'}`}>Deployed Product</th>
                       <th className={`px-6 text-left text-xs font-semibold uppercase tracking-wider ${viewMode === 'table-compact' ? 'py-2' : 'py-3.5'}`}>Account Owner</th>
                       <th className={`px-6 text-left text-xs font-semibold uppercase tracking-wider ${viewMode === 'table-compact' ? 'py-2' : 'py-3.5'}`}>Type</th>
                       <th className={`px-6 text-left text-xs font-semibold uppercase tracking-wider ${viewMode === 'table-compact' ? 'py-2' : 'py-3.5'}`}>Status</th>
-                      <th className={`px-6 text-left text-xs font-semibold uppercase tracking-wider ${viewMode === 'table-compact' ? 'py-2' : 'py-3.5'}`}>Date</th>
                       <th className={`px-6 text-right text-xs font-semibold uppercase tracking-wider ${viewMode === 'table-compact' ? 'py-2' : 'py-3.5'}`}>Actions</th>
                     </tr>
                   </thead>

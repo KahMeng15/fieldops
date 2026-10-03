@@ -119,33 +119,21 @@ export const CompaniesPage: React.FC = () => {
           )}
         </div>
 
-        <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
-          <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-100">
-            <div className="flex items-center space-x-1.5 text-slate-500 text-[11px] mb-0.5">
-              <MapPin className="w-3 h-3 text-emerald-600" />
-              <span>Locations</span>
-            </div>
-            <div className="text-base font-bold text-slate-900">
-              {company.locations_count || 0}
-            </div>
+        <div className="flex items-center gap-4 pt-1 text-xs text-slate-600">
+          <div className="flex items-center space-x-1.5">
+            <MapPin className="w-3.5 h-3.5 text-emerald-600" />
+            <span className="font-semibold text-slate-900">{company.locations_count || 0}</span>
+            <span>Locations</span>
           </div>
-
-          <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-100">
-            <div className="flex items-center space-x-1.5 text-slate-500 text-[11px] mb-0.5">
-              <Server className="w-3 h-3 text-blue-600" />
-              <span>Deployments</span>
-            </div>
-            <div className="text-base font-bold text-slate-900">
-              {company.deployments_count || 0}
-            </div>
+          <div className="flex items-center space-x-1.5">
+            <Server className="w-3.5 h-3.5 text-blue-600" />
+            <span className="font-semibold text-slate-900">{company.deployments_count || 0}</span>
+            <span>Deployments</span>
           </div>
         </div>
       </div>
 
-      <div className="px-5 py-3 bg-slate-50/80 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-        <span className="text-[11px] font-medium text-slate-400">
-          {company.locations_count ? `${company.locations_count} ${company.locations_count === 1 ? 'Location' : 'Locations'}` : 'No locations yet'}
-        </span>
+      <div className="px-5 py-3 bg-slate-50/80 border-t border-slate-100 flex items-center justify-end text-xs text-slate-500">
         <span className="font-semibold text-blue-600 group-hover:text-blue-700 flex items-center space-x-1 group-hover:translate-x-0.5 transition-all">
           <span>View Locations</span>
           <ChevronRight className="w-3.5 h-3.5" />
@@ -285,10 +273,10 @@ export const CompaniesPage: React.FC = () => {
           <button
             type="button"
             onClick={() => setIsCompanyModalOpen(true)}
-            className="flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg shadow-sm transition-all cursor-pointer"
+            className="flex items-center justify-center p-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-sm transition-all cursor-pointer"
+            title="New Company"
           >
-            <Plus className="w-4 h-4" />
-            <span>New Company</span>
+            <Plus className="w-5 h-5" />
           </button>
         </div>
       </div>
@@ -308,9 +296,6 @@ export const CompaniesPage: React.FC = () => {
 
         <div className="flex items-center space-x-4">
           <ViewToggle viewMode={viewMode} setViewMode={setViewMode} />
-          <div className="text-xs font-medium text-slate-500">
-            Showing <span className="font-semibold text-slate-800">{companies.length}</span> companies
-          </div>
         </div>
       </div>
 
