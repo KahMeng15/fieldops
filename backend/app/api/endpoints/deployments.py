@@ -2,9 +2,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import text, Column, String, func
 from app.db.base import get_db
-from app.models import Deployment, AuditLog, User, Company, Location, Credential, DeploymentPhaseRemark, DeploymentExtraItem
+from app.models import Deployment, LookupCategory, AuditLog, User, Company, Location, Credential, DeploymentPhaseRemark, DeploymentExtraItem
 from app.schemas import DeploymentSchema, DeploymentResponse, PhaseRemarkCreate, PhaseRemarkResponse, ExtraItemCreate, ExtraItemResponse
 from app.api.deps import get_current_user, require_permission
+from app.api.endpoints.settings import sync_lookup_values
 from app.core.audit import parse_client_info, resolve_external_ip, is_internal_docker_ip
 from typing import List, Optional, Set, Any, Dict
 from datetime import datetime
@@ -782,6 +783,8 @@ def auto_match_headers(headers: List[str]) -> Dict[str, str]:
         hl = h.lower().strip()
         if "customer" in hl or "company" in hl or "client" in hl:
             mappings.setdefault("customer_name", h)
+        elif "location" in hl or "site" in hl or "datacenter" in hl or "data center" in hl:
+            mappings.setdefault("location", h)
         elif "sales" in hl or "account owner" in hl or "sales person" in hl:
             mappings.setdefault("account_owner", h)
         elif "product 2" in hl:
@@ -944,6 +947,15 @@ async def execute_excel_import(
     extra_items_created = 0
     errors = []
 
+    global_vals = {
+        "deployed_product": set(),
+        "internal_group_name": set(),
+        "account_owner": set(),
+        "lead_engineer": set(),
+        "assisting_engineers": set(),
+        "extra_item_options": set()
+    }
+
     actual_db_cols = sync_orm_columns(db)
 
     EMPTY_PLACEHOLDERS = {"none", "n/a", "na", "null", "-", "nil", "n.a.", "n.a", "none.", "n/a."}
@@ -1001,7 +1013,11 @@ async def execute_excel_import(
                 addons.append({"name": an_val, "qty": aq_val})
 
         # Base fields
+        loc_name = get_val("location") or "undefined"
+        
+        # Base fields
         acc_owner = get_val("account_owner") or None
+        int_group = get_val("internal_group_name") or None
         
         start_dt_str = get_val("deployment_date")
         start_dt = parse_dt(start_dt_str) if start_dt_str else None
@@ -1041,15 +1057,42 @@ async def execute_excel_import(
 
         stage_st_map = build_stage_statuses_map(dep_type, pre_poc, poc, post_poc, kickoff_st, materials_st, uat_fat_st)
 
+        if acc_owner: global_vals["account_owner"].add(acc_owner)
+        if int_group: global_vals["internal_group_name"].add(int_group)
+        if lead_eng: global_vals["lead_engineer"].add(lead_eng)
+        if assist_eng:
+            for ae in [x.strip() for x in assist_eng.split(",") if x.strip()]:
+                global_vals["assisting_engineers"].add(ae)
+        
+        for addon in addons:
+            if addon["name"]: global_vals["extra_item_options"].add(addon["name"])
+            
+        for item_info in products_to_create:
+            if item_info["product"]: global_vals["deployed_product"].add(item_info["product"])
+
+        # Find or create location for the company
+        loc = db.query(Location).filter(
+            Location.company_id == comp.id,
+            Location.name.ilike(loc_name),
+            Location.deleted_at == None
+        ).first()
+        if not loc:
+            loc = Location(company_id=comp.id, name=loc_name)
+            db.add(loc)
+            db.flush()
+
         # Create deployments
         for item_info in products_to_create:
             try:
                 dep = Deployment(
                     company_id=comp.id,
                     customer_name=comp.name,
+                    location_id=loc.id,
+                    location=loc.name,
                     deployed_product=item_info["product"],
                     product_quantity=item_info["qty"],
                     account_owner=acc_owner,
+                    internal_group_name=int_group,
                     deployment_type=dep_type,
                     stage_statuses=stage_st_map,
                     deployment_date=start_dt or datetime.utcnow(),
@@ -1088,6 +1131,26 @@ async def execute_excel_import(
                 errors.append(f"Row {idx} ({cust_name}): {str(e)}")
 
     db.commit()
+
+    # Update global settings
+    setting_cat = db.query(LookupCategory).filter_by(name="deployment_field_settings").first()
+    if setting_cat and setting_cat.description:
+        data = json.loads(setting_cat.description)
+        fields = data.get("fields", [])
+        changed = False
+        for f in fields:
+            key = f.get("key")
+            if key in global_vals and global_vals[key]:
+                opts = f.get("options", [])
+                for val in global_vals[key]:
+                    if val not in opts:
+                        opts.append(val)
+                        changed = True
+                f["options"] = opts
+        if changed:
+            setting_cat.description = json.dumps(data)
+            db.commit()
+            sync_lookup_values(db, data)
 
     return {
         "success": True,

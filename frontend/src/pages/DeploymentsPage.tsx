@@ -1,3 +1,5 @@
+import { getStageColor } from '../utils/statusUtils';
+import { formatDate } from '../utils/dateFormatter';
 import { useEffect, useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { 
@@ -57,8 +59,7 @@ export const DeploymentsPage = () => {
     getDeploymentFieldSettings().then(settings => {
       const tf = settings.fields.find(f => f.key === 'deployment_type');
       if (tf?.options?.length) setTypeOptions(tf.options);
-      const sf = settings.fields.find(f => f.key === 'pre_poc_status');
-      if (sf?.options?.length) setStatusOptions(sf.options);
+      setStatusOptions(['Completed', 'In Progress', 'Planning']);
     }).catch(() => {});
   }, []);
 
@@ -87,8 +88,16 @@ export const DeploymentsPage = () => {
         (d.internal_group_name && d.internal_group_name.toLowerCase().includes(searchQuery.toLowerCase()));
 
       const matchesType = typeFilter === 'all' || d.deployment_type === typeFilter;
+      let computedStatus = d.pre_poc_status || 'Planning';
+      if (d.stage_statuses && Object.keys(d.stage_statuses).length > 0) {
+        const vals = Object.values(d.stage_statuses).map((v: any) => String(v).toLowerCase());
+        const hasComplete = vals.some(v => v === 'complete' || v === 'done');
+        const allComplete = vals.every(v => v === 'complete' || v === 'done');
+        computedStatus = allComplete ? 'Completed' : (hasComplete ? 'In Progress' : 'Planning');
+      }
+      
       const matchesStatus = statusFilter === 'all' || 
-        (d.pre_poc_status && d.pre_poc_status.toLowerCase() === statusFilter.toLowerCase());
+        (computedStatus.toLowerCase() === statusFilter.toLowerCase());
 
       return matchesSearch && matchesType && matchesStatus;
     });
@@ -288,8 +297,74 @@ export const DeploymentsPage = () => {
                     </td>
 
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex text-xs px-2.5 py-0.5 rounded-full font-medium border ${getStatusBadge(d.pre_poc_status)}`}>
-                        {d.pre_poc_status || 'Pending'}
+                      <span className={`inline-flex text-xs px-2.5 py-0.5 rounded-full font-medium border ${
+                        (() => {
+                          if (!d.stage_statuses || Object.keys(d.stage_statuses).length === 0) {
+                            return getStatusBadge(d.pre_poc_status || 'Planning');
+                          }
+                          const isPoc = d.deployment_type === 'POC';
+                          const stages = isPoc ? ['Initiated', 'Box allocated', 'Box prepared', 'Pre-POC Meeting Done', 'Deployment pending', 'Deployment in progress', 'Deployment completed', 'Policy Tuning', 'Pre-Sign off meeting', 'Sign off documentation sent', 'Post POC Meeting'] : ['Initiated', 'Kick Off Meeting Done', 'Box Allocated', 'Box Prepared', 'Preparing UAT/FAT/Documentation', 'Deployment Date Scheduled', 'Deployment in progress', 'Deployment completed', 'UAT/FAT Completed', 'Signed-off'];
+                          
+                          let currentStage = stages[0];
+                          let currentState = 'Pending';
+                          let allComplete = true;
+                          
+                          for (const s of stages) {
+                            const val = (d.stage_statuses[s] || '').toLowerCase();
+                            if (!['complete', 'done', 'completed'].includes(val)) {
+                              allComplete = false;
+                            }
+                          }
+                          
+                          if (allComplete) return getStatusBadge('completed');
+
+                          for (const s of stages) {
+                            const val = (d.stage_statuses[s] || '').toLowerCase();
+                            if (['complete', 'done', 'completed'].includes(val)) {
+                              currentStage = s;
+                              currentState = 'Complete';
+                            } else if (['pending', 'in progress', 'in_progress'].includes(val)) {
+                              currentStage = s;
+                              currentState = 'In Progress';
+                              break;
+                            } else {
+                              currentStage = s;
+                              currentState = 'Pending';
+                              break;
+                            }
+                          }
+                          
+                          return getStageColor(currentStage, currentState);
+                        })()
+                      }`}>
+                        {(() => {
+                          if (!d.stage_statuses || Object.keys(d.stage_statuses).length === 0) {
+                            return d.pre_poc_status || 'Planning';
+                          }
+                          const isPoc = d.deployment_type === 'POC';
+                          const stages = isPoc ? ['Initiated', 'Box allocated', 'Box prepared', 'Pre-POC Meeting Done', 'Deployment pending', 'Deployment in progress', 'Deployment completed', 'Policy Tuning', 'Pre-Sign off meeting', 'Sign off documentation sent', 'Post POC Meeting'] : ['Initiated', 'Kick Off Meeting Done', 'Box Allocated', 'Box Prepared', 'Preparing UAT/FAT/Documentation', 'Deployment Date Scheduled', 'Deployment in progress', 'Deployment completed', 'UAT/FAT Completed', 'Signed-off'];
+                          
+                          let currentStage = stages[0];
+                          let currentState = 'Pending';
+                          
+                          for (const s of stages) {
+                            const val = (d.stage_statuses[s] || '').toLowerCase();
+                            if (['complete', 'done', 'completed'].includes(val)) {
+                              currentStage = s;
+                              currentState = 'Complete';
+                            } else if (['pending', 'in progress', 'in_progress'].includes(val)) {
+                              currentStage = s;
+                              currentState = 'In Progress';
+                              break; // First pending
+                            } else {
+                              currentStage = s;
+                              currentState = 'Pending';
+                              break; // First not started
+                            }
+                          }
+                          
+                          return `${currentStage}: ${currentState}`;
+                        })()}
                       </span>
                     </td>
 
@@ -298,8 +373,8 @@ export const DeploymentsPage = () => {
                         <Calendar className="w-3.5 h-3.5 text-slate-400" />
                         <span>
                           {d.deployment_date 
-                            ? new Date(d.deployment_date).toLocaleDateString()
-                            : d.created_at ? new Date(d.created_at).toLocaleDateString() : '—'}
+                            ? formatDate(d.deployment_date)
+                            : formatDate(d.created_at)}
                         </span>
                       </div>
                     </td>

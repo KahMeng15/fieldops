@@ -1,3 +1,4 @@
+import { formatDate, formatDateTime } from '../utils/dateFormatter';
 import { useEffect, useState, useRef } from 'react';
 import { SearchableSelect } from '../components/SearchableSelect';
 import { useParams, Link, useNavigate, useBlocker } from 'react-router-dom';
@@ -244,33 +245,7 @@ export const DeploymentDetailPage = () => {
     }
   };
 
-  const formatDate = (dateStr?: string) => {
-    if (!dateStr) return 'N/A';
-    try {
-      const d = new Date(dateStr);
-      return isNaN(d.getTime()) ? 'N/A' : d.toLocaleDateString();
-    } catch {
-      return 'N/A';
-    }
-  };
 
-  const formatDateTime = (dateStr?: string) => {
-    if (!dateStr) return '';
-    try {
-      const d = new Date(dateStr);
-      if (isNaN(d.getTime())) return '';
-      return d.toLocaleString(undefined, {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-        hour: 'numeric',
-        minute: '2-digit',
-        hour12: true
-      });
-    } catch {
-      return '';
-    }
-  };
 
   const fetchDetails = async () => {
     if (!id) return;

@@ -1,3 +1,4 @@
+import { formatDate } from '../utils/dateFormatter';
 import React, { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { 
@@ -721,9 +722,9 @@ export const CompanyDetailPage: React.FC = () => {
                             <tbody className="divide-y divide-slate-100 text-sm">
                               {deps.map((dep) => {
                                 const dateStr = dep.deployment_date 
-                                  ? new Date(dep.deployment_date).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+                                  ? formatDate(dep.deployment_date)
                                   : dep.created_at
-                                  ? new Date(dep.created_at).toLocaleDateString()
+                                  ? formatDate(dep.created_at)
                                   : 'N/A';
 
                                 return (
@@ -780,8 +781,30 @@ export const CompanyDetailPage: React.FC = () => {
 
                                     {/* Status */}
                                     <td className="py-3 px-3 whitespace-nowrap">
-                                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${getStatusBadge(dep.pre_poc_status)}`}>
-                                        {dep.pre_poc_status || 'Active'}
+                                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${getStatusBadge(
+                                        (() => {
+                                          if (dep.stage_statuses && Object.keys(dep.stage_statuses).length > 0) {
+                                            const vals = Object.values(dep.stage_statuses).map((v: any) => String(v).toLowerCase());
+                                            const hasComplete = vals.some(v => v === 'complete' || v === 'done');
+                                            const allComplete = vals.every(v => v === 'complete' || v === 'done');
+                                            if (allComplete) return 'Completed';
+                                            if (hasComplete) return 'In Progress';
+                                            return 'Planning';
+                                          }
+                                          return dep.pre_poc_status || 'Active';
+                                        })()
+                                      )}`}>
+                                        {(() => {
+                                          if (dep.stage_statuses && Object.keys(dep.stage_statuses).length > 0) {
+                                            const vals = Object.values(dep.stage_statuses).map((v: any) => String(v).toLowerCase());
+                                            const hasComplete = vals.some(v => v === 'complete' || v === 'done');
+                                            const allComplete = vals.every(v => v === 'complete' || v === 'done');
+                                            if (allComplete) return 'Completed';
+                                            if (hasComplete) return 'In Progress';
+                                            return 'Planning';
+                                          }
+                                          return dep.pre_poc_status || 'Active';
+                                        })()}
                                       </span>
                                     </td>
 

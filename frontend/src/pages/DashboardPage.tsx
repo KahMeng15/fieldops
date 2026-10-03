@@ -40,13 +40,24 @@ export const DashboardPage = () => {
   }, []);
 
   const totalDeployments = deployments.length;
-  const activeDeployments = deployments.filter(d => 
-    d.pre_poc_status === 'Active' || d.pre_poc_status === 'In Progress'
-  ).length;
+  const activeDeployments = deployments.filter(d => {
+    if (d.stage_statuses && Object.keys(d.stage_statuses).length > 0) {
+      const vals = Object.values(d.stage_statuses).map((v: any) => v.toLowerCase());
+      const hasComplete = vals.some(v => v === 'complete' || v === 'done');
+      const allComplete = vals.every(v => v === 'complete' || v === 'done');
+      return hasComplete && !allComplete;
+    }
+    return d.pre_poc_status === 'Active' || d.pre_poc_status === 'In Progress';
+  }).length;
   const pocDeployments = deployments.filter(d => d.deployment_type === 'POC').length;
-  const planningDeployments = deployments.filter(d => 
-    d.pre_poc_status === 'Planning' || d.pre_poc_status === 'Pre-POC'
-  ).length;
+  const planningDeployments = deployments.filter(d => {
+    if (d.stage_statuses && Object.keys(d.stage_statuses).length > 0) {
+      const vals = Object.values(d.stage_statuses).map((v: any) => String(v).toLowerCase());
+      const hasComplete = vals.some(v => v === 'complete' || v === 'done');
+      return !hasComplete;
+    }
+    return !d.pre_poc_status || d.pre_poc_status === 'Planning' || d.pre_poc_status === 'Pre-POC';
+  }).length;
 
   const getStatusBadge = (status?: string) => {
     switch (status?.toLowerCase()) {
@@ -202,8 +213,30 @@ export const DashboardPage = () => {
                       >
                         {dep.customer_name}
                       </Link>
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium border ${getStatusBadge(dep.pre_poc_status)}`}>
-                        {dep.pre_poc_status || 'Pending'}
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium border ${getStatusBadge(
+                        (() => {
+                          if (dep.stage_statuses && Object.keys(dep.stage_statuses).length > 0) {
+                            const vals = Object.values(dep.stage_statuses).map((v: any) => String(v).toLowerCase());
+                            const hasComplete = vals.some(v => v === 'complete' || v === 'done');
+                            const allComplete = vals.every(v => v === 'complete' || v === 'done');
+                            if (allComplete) return 'Completed';
+                            if (hasComplete) return 'In Progress';
+                            return 'Planning';
+                          }
+                          return dep.pre_poc_status || 'Planning';
+                        })()
+                      )}`}>
+                        {(() => {
+                          if (dep.stage_statuses && Object.keys(dep.stage_statuses).length > 0) {
+                            const vals = Object.values(dep.stage_statuses).map((v: any) => String(v).toLowerCase());
+                            const hasComplete = vals.some(v => v === 'complete' || v === 'done');
+                            const allComplete = vals.every(v => v === 'complete' || v === 'done');
+                            if (allComplete) return 'Completed';
+                            if (hasComplete) return 'In Progress';
+                            return 'Planning';
+                          }
+                          return dep.pre_poc_status || 'Planning';
+                        })()}
                       </span>
                     </div>
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">

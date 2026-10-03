@@ -1,3 +1,4 @@
+import { formatDateTime } from '../utils/dateFormatter';
 import React, { useState, useEffect } from 'react';
 import { 
   X, 
@@ -79,18 +80,6 @@ export const CredentialAccessLogsModal: React.FC<CredentialAccessLogsModalProps>
     setTimeout(() => setCopiedKey(null), 2000);
   };
 
-  const formatDate = (isoString: string | null) => {
-    if (!isoString) return 'Unknown Date';
-    const date = new Date(isoString);
-    return date.toLocaleString(undefined, {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit'
-    });
-  };
 
   const formatCredType = (type: string) => {
     switch (type?.toLowerCase()) {
@@ -267,7 +256,7 @@ export const CredentialAccessLogsModal: React.FC<CredentialAccessLogsModalProps>
                         <div className="flex items-center space-x-3 text-xs text-slate-500">
                           <span className="flex items-center space-x-1">
                             <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                            <span>{formatDate(log.timestamp)}</span>
+                            <span>{formatDateTime(log.timestamp)}</span>
                           </span>
                           <span className="hidden sm:inline">•</span>
                           <span className="hidden sm:inline font-medium text-slate-600">

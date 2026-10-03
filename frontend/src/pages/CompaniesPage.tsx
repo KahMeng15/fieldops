@@ -1,3 +1,4 @@
+import { formatDate } from '../utils/dateFormatter';
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
@@ -150,7 +151,7 @@ export const CompaniesPage: React.FC = () => {
                       {company.name}
                     </h3>
                     <span className="text-[11px] text-slate-400">
-                      Added {new Date(company.created_at).toLocaleDateString()}
+                      Added {formatDate(company.created_at)}
                     </span>
                   </div>
 

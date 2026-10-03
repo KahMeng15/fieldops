@@ -4,13 +4,14 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 from app.db.base import get_db
 from app.models import (
-    LookupCategory, LookupValue, AuditLog, User, 
+    LookupCategory, LookupValue, AuditLog, User, Role, Team, 
     DeploymentExtraItem, DeploymentPhaseRemark, CredentialVersion, 
     Credential, ConfigReport, Reminder, LoanedItem, DeploymentEngineer, Deployment,
     Company, Location, CompanyContact
 )
 from app.core.security import verify_password
 from app.api.deps import get_current_user
+from app.db.init_db import init_db
 from typing import Dict, Any, List
 
 router = APIRouter()
@@ -23,14 +24,8 @@ DEFAULT_DEPLOYMENT_SETTINGS: Dict[str, Any] = {
             "type": "select",
             "enabled": True,
             "required": True,
-            "default_value": "FieldOps Core Gateway",
-            "options": [
-                "FieldOps Core Gateway",
-                "Edge Compute Appliance X1",
-                "Secure Access Service Edge (SASE)",
-                "AI Inference Node Enterprise",
-                "Zero Trust Network Connector"
-            ],
+            "default_value": "",
+            "options": [],
             "allow_other": True,
             "other_placeholder": "Specify other product...",
             "system_fixed": False,
@@ -55,24 +50,12 @@ DEFAULT_DEPLOYMENT_SETTINGS: Dict[str, Any] = {
             "type": "select",
             "enabled": True,
             "required": False,
-            "default_value": "Edge Infrastructure",
-            "options": ["Edge Infrastructure", "Core Platform", "Cloud Ops", "Security Team", "Hardware Lab"],
+            "default_value": "",
+            "options": [],
             "allow_other": True,
             "other_placeholder": "Specify other internal group...",
             "system_fixed": False,
             "description": "Internal engineering team or department owner"
-        },
-        {
-            "key": "pre_poc_status",
-            "label": "Status",
-            "type": "select",
-            "enabled": True,
-            "required": False,
-            "default_value": "Planning",
-            "options": ["Cancelled", "Planning", "Pre-POC", "In Progress", "On Hold", "Completed"],
-            "allow_other": False,
-            "system_fixed": False,
-            "description": "Current progress or phase of the deployment"
         },
         {
             "key": "account_owner",
@@ -81,12 +64,7 @@ DEFAULT_DEPLOYMENT_SETTINGS: Dict[str, Any] = {
             "enabled": True,
             "required": False,
             "default_value": "",
-            "options": [
-                "Sarah Jenkins (Account Lead)",
-                "Alex Rivera (Customer Success)",
-                "Marcus Vance (Enterprise Sales)",
-                "Elena Rostova (Client Executive)"
-            ],
+            "options": [],
             "allow_other": True,
             "other_placeholder": "Type to add new owner...",
             "system_fixed": False,
@@ -99,15 +77,7 @@ DEFAULT_DEPLOYMENT_SETTINGS: Dict[str, Any] = {
             "enabled": True,
             "required": False,
             "default_value": "",
-            "options": [
-                "Michael Chang (Principal Engineer)",
-                "David Kim (Senior Systems Architect)",
-                "Priya Patel (Lead Field Engineer)",
-                "James Wilson (Deployment Lead)",
-                "Sarah Miller (Field Specialist)",
-                "Rachel Adams (Network Engineer)",
-                "Liam O'Connor (Infrastructure Tech)"
-            ],
+            "options": [],
             "allow_other": True,
             "other_placeholder": "Type to add new lead...",
             "system_fixed": False,
@@ -120,15 +90,7 @@ DEFAULT_DEPLOYMENT_SETTINGS: Dict[str, Any] = {
             "enabled": True,
             "required": False,
             "default_value": "",
-            "options": [
-                "Michael Chang (Principal Engineer)",
-                "David Kim (Senior Systems Architect)",
-                "Priya Patel (Lead Field Engineer)",
-                "James Wilson (Deployment Lead)",
-                "Sarah Miller (Field Specialist)",
-                "Rachel Adams (Network Engineer)",
-                "Liam O'Connor (Infrastructure Tech)"
-            ],
+            "options": [],
             "allow_other": True,
             "other_placeholder": "Type to add engineers...",
             "system_fixed": False,
@@ -151,18 +113,7 @@ DEFAULT_DEPLOYMENT_SETTINGS: Dict[str, Any] = {
             "enabled": True,
             "required": False,
             "default_value": "",
-            "options": [
-                "10G SFP+ SR Transceiver Module",
-                "10G SFP+ LR Transceiver Module",
-                "1G SFP RJ45 Copper Transceiver Module",
-                "DAC 10G Passive Direct Attach Cable (1m)",
-                "DAC 10G Passive Direct Attach Cable (3m)",
-                "Fiber Patch Cord LC-LC Duplex OM4 (5m)",
-                "Cat6A Shielded Ethernet Cable (3m)",
-                "Cat6A Shielded Ethernet Cable (10m)",
-                "Rack Mount Rail Kit 1U",
-                "Dual AC Power Supply Module 550W"
-            ],
+            "options": [],
             "allow_other": True,
             "other_placeholder": "Type custom extra item...",
             "system_fixed": False,
@@ -449,7 +400,7 @@ def sync_lookup_values(db: Session, settings_data: Dict[str, Any]):
     for field in fields:
         field_key = field.get("key")
         options = field.get("options")
-        if field.get("type") in ["select", "multiselect"] and options:
+        if field.get("type") in ["select", "multiselect"] and options is not None:
             cat_name = f"field_{field_key}"
             category = db.query(LookupCategory).filter_by(name=cat_name).first()
             if not category:
@@ -1042,6 +993,11 @@ async def reset_database(
         db.query(Company).delete()
         db.query(AuditLog).delete()
 
+        # Delete Users, Roles, Teams
+        db.query(User).delete()
+        db.query(Role).delete()
+        db.query(Team).delete()
+
         # 2. Delete all lookup values and categories (wiping custom options for internal_group, deployed_product, account_owner, engineers, extra_items, etc.)
         db.query(LookupValue).delete()
         db.query(LookupCategory).delete()
@@ -1065,6 +1021,9 @@ async def reset_database(
 
         sync_lookup_values(db, DEFAULT_COMPANY_SETTINGS)
         sync_company_database_columns(db, DEFAULT_COMPANY_SETTINGS)
+
+        # 5. Reinitialize admin user, roles, and teams
+        init_db()
 
     except Exception as e:
         db.rollback()
