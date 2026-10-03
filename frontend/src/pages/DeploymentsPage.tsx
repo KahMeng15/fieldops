@@ -18,6 +18,7 @@ import {
   Pencil
 } from 'lucide-react';
 import { getDeployments, deleteDeployment, getDeploymentFieldSettings, type DeploymentData } from '../api';
+import { ViewToggle, type ViewMode } from '../components/ViewToggle';
 import NewDeploymentModal from '../components/NewDeploymentModal';
 import EditDeploymentModal from '../components/EditDeploymentModal';
 
@@ -32,6 +33,7 @@ export const DeploymentsPage = () => {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [editingDeployment, setEditingDeployment] = useState<DeploymentData | null>(null);
   const [typeOptions, setTypeOptions] = useState<string[]>(['Deployment', 'POC']);
+  const [viewMode, setViewMode] = useState<ViewMode>('table');
   const [statusOptions, setStatusOptions] = useState<string[]>([
     'Cancelled', 'Planning', 'Pre-POC', 'In Progress', 'On Hold', 'Completed'
   ]);
@@ -125,6 +127,304 @@ export const DeploymentsPage = () => {
     }
   };
 
+
+  const renderGridCard = (d: DeploymentData) => (
+    <div key={d.id} className="bg-white border border-slate-200 hover:border-blue-300 rounded-xl shadow-xs hover:shadow-md transition-all flex flex-col overflow-hidden">
+      <div className="p-5 space-y-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center space-x-3">
+            <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-700 border border-blue-100 flex items-center justify-center font-bold text-sm shrink-0">
+              {d.customer_name ? d.customer_name.charAt(0).toUpperCase() : 'C'}
+            </div>
+            <div>
+              <Link to={`/deployments/${d.id}`} className="font-semibold text-sm text-slate-900 hover:text-blue-600 transition-colors block line-clamp-1">
+                {d.customer_name}
+              </Link>
+              {d.internal_group_name && (
+                <span className="text-[11px] text-slate-400 font-mono line-clamp-1">
+                  {d.internal_group_name}
+                </span>
+              )}
+            </div>
+          </div>
+          {renderActions(d)}
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 text-xs text-slate-600">
+          <div className="flex items-center space-x-1.5 truncate">
+            <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+            <span className="truncate">{d.location}</span>
+          </div>
+          <div className="flex items-center space-x-1.5 truncate">
+            <Package className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+            <span className="truncate font-medium">{d.deployed_product || 'FieldOps Core'}</span>
+          </div>
+          <div className="flex items-center space-x-1.5 truncate">
+            <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+            <span className="truncate">{d.account_owner || '—'}</span>
+          </div>
+          <div className="flex items-center space-x-1.5 truncate">
+            <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+            <span className="truncate">{d.deployment_date ? formatDate(d.deployment_date) : formatDate(d.created_at)}</span>
+          </div>
+        </div>
+      </div>
+      <div className="px-5 py-3 bg-slate-50/80 border-t border-slate-100 flex items-center justify-between">
+        <span className="inline-flex items-center space-x-1 text-[11px] px-2 py-0.5 rounded-md bg-white border border-slate-200 text-slate-600">
+          <Layers className="w-3 h-3 text-slate-400" />
+          <span>{d.deployment_type}</span>
+        </span>
+        {renderStatusBadge(d)}
+      </div>
+    </div>
+  );
+
+  const renderListCard = (d: DeploymentData) => (
+    <div key={d.id} className="bg-white border border-slate-200 hover:border-blue-300 rounded-xl shadow-xs hover:shadow-md transition-all flex flex-col md:flex-row items-center justify-between p-4 gap-4">
+      <div className="flex items-center space-x-4 flex-1 min-w-0">
+        <div className="w-10 h-10 rounded-lg bg-blue-50 text-blue-700 border border-blue-100 flex items-center justify-center font-bold text-base shrink-0">
+          {d.customer_name ? d.customer_name.charAt(0).toUpperCase() : 'C'}
+        </div>
+        <div className="min-w-0">
+          <Link to={`/deployments/${d.id}`} className="font-semibold text-sm text-slate-900 hover:text-blue-600 transition-colors block line-clamp-1">
+            {d.customer_name}
+          </Link>
+          <div className="flex items-center space-x-3 text-[11px] text-slate-500 mt-0.5">
+            <span className="flex items-center space-x-1 truncate"><MapPin className="w-3 h-3" /><span className="truncate">{d.location}</span></span>
+            <span className="flex items-center space-x-1 truncate"><Package className="w-3 h-3" /><span className="truncate">{d.deployed_product || 'FieldOps Core'}</span></span>
+          </div>
+        </div>
+      </div>
+      
+      <div className="flex items-center gap-4 text-sm shrink-0">
+        <div className="hidden lg:flex items-center space-x-1.5 text-xs text-slate-500 w-32 truncate">
+          <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+          <span className="truncate">{d.account_owner || '—'}</span>
+        </div>
+        <div className="w-24 shrink-0 flex justify-end">
+          <span className="inline-flex items-center space-x-1 text-[11px] px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-slate-600">
+            {d.deployment_type}
+          </span>
+        </div>
+        <div className="w-36 shrink-0 flex justify-end">
+          {renderStatusBadge(d)}
+        </div>
+        <div className="flex items-center gap-2 border-l border-slate-200 pl-4">
+          <Link to={`/deployments/${d.id}`} className="p-1.5 text-slate-400 hover:text-slate-700 bg-slate-50 hover:bg-slate-100 rounded-md transition-colors"><ExternalLink className="w-4 h-4" /></Link>
+          {renderActions(d)}
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderStatusBadge = (d: DeploymentData) => (
+    <span className={`inline-flex text-[11px] px-2 py-0.5 rounded-full font-medium border ${
+      (() => {
+        if (!d.stage_statuses || Object.keys(d.stage_statuses).length === 0) {
+          return getStatusBadge(d.pre_poc_status || 'Planning');
+        }
+        const isPoc = d.deployment_type === 'POC';
+        const stages = isPoc ? ['Initiated', 'Box allocated', 'Box prepared', 'Pre-POC Meeting Done', 'Deployment pending', 'Deployment in progress', 'Deployment completed', 'Policy Tuning', 'Pre-Sign off meeting', 'Sign off documentation sent', 'Post POC Meeting'] : ['Initiated', 'Kick Off Meeting Done', 'Box Allocated', 'Box Prepared', 'Preparing UAT/FAT/Documentation', 'Deployment Date Scheduled', 'Deployment in progress', 'Deployment completed', 'UAT/FAT Completed', 'Signed-off'];
+        
+        let currentStage = stages[0];
+        let currentState = 'Pending';
+        let allComplete = true;
+        
+        for (const s of stages) {
+          const val = (d.stage_statuses[s] || '').toLowerCase();
+          if (!['complete', 'done', 'completed'].includes(val)) {
+            allComplete = false;
+          }
+        }
+        
+        if (allComplete) return getStatusBadge('completed');
+
+        for (const s of stages) {
+          const val = (d.stage_statuses[s] || '').toLowerCase();
+          if (['complete', 'done', 'completed'].includes(val)) {
+            currentStage = s;
+            currentState = 'Complete';
+          } else if (['pending', 'in progress', 'in_progress'].includes(val)) {
+            currentStage = s;
+            currentState = 'In Progress';
+            break;
+          } else {
+            currentStage = s;
+            currentState = 'Pending';
+            break;
+          }
+        }
+        
+        return getStageColor(currentStage, currentState);
+      })()
+    }`}>
+      {(() => {
+        if (!d.stage_statuses || Object.keys(d.stage_statuses).length === 0) {
+          return d.pre_poc_status || 'Planning';
+        }
+        const isPoc = d.deployment_type === 'POC';
+        const stages = isPoc ? ['Initiated', 'Box allocated', 'Box prepared', 'Pre-POC Meeting Done', 'Deployment pending', 'Deployment in progress', 'Deployment completed', 'Policy Tuning', 'Pre-Sign off meeting', 'Sign off documentation sent', 'Post POC Meeting'] : ['Initiated', 'Kick Off Meeting Done', 'Box Allocated', 'Box Prepared', 'Preparing UAT/FAT/Documentation', 'Deployment Date Scheduled', 'Deployment in progress', 'Deployment completed', 'UAT/FAT Completed', 'Signed-off'];
+        
+        let currentStage = stages[0];
+        let currentState = 'Pending';
+        
+        for (const s of stages) {
+          const val = (d.stage_statuses[s] || '').toLowerCase();
+          if (['complete', 'done', 'completed'].includes(val)) {
+            currentStage = s;
+            currentState = 'Complete';
+          } else if (['pending', 'in progress', 'in_progress'].includes(val)) {
+            currentStage = s;
+            currentState = 'In Progress';
+            break;
+          } else {
+            currentStage = s;
+            currentState = 'Pending';
+            break;
+          }
+        }
+        
+        return `${currentStage}: ${currentState}`;
+      })()}
+    </span>
+  );
+
+  const renderTableRow = (d: DeploymentData) => (
+    <tr key={d.id} className="hover:bg-slate-50/70 transition-colors">
+      <td className={`px-6 whitespace-nowrap ${viewMode === 'table-compact' ? 'py-2' : 'py-4'}`}>
+        <div className="flex items-center space-x-3">
+          <div className={`w-9 h-9 rounded-lg bg-blue-50 text-blue-700 border border-blue-100 flex items-center justify-center font-bold text-sm ${viewMode === 'table-compact' ? 'scale-75 origin-left' : ''}`}>
+            {d.customer_name ? d.customer_name.charAt(0).toUpperCase() : 'C'}
+          </div>
+          <div>
+            <Link 
+              to={`/deployments/${d.id}`}
+              className="font-semibold text-sm text-slate-900 hover:text-blue-600 transition-colors block"
+            >
+              {d.customer_name}
+            </Link>
+            {d.internal_group_name && (
+              <span className="text-xs text-slate-400 font-mono">
+                {d.internal_group_name}
+              </span>
+            )}
+          </div>
+        </div>
+      </td>
+
+      <td className={`px-6 whitespace-nowrap ${viewMode === 'table-compact' ? 'py-2' : 'py-4'}`}>
+        <div className="flex items-center space-x-1.5 text-sm text-slate-600">
+          <MapPin className="w-3.5 h-3.5 text-slate-400" />
+          <span>{d.location}</span>
+        </div>
+      </td>
+
+      <td className={`px-6 whitespace-nowrap ${viewMode === 'table-compact' ? 'py-2' : 'py-4'}`}>
+        <div className="flex items-center space-x-2">
+          <span className="w-6 h-6 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 flex items-center justify-center shrink-0">
+            <Package className="w-3.5 h-3.5" />
+          </span>
+          <span className="text-xs font-bold text-slate-800">
+            {d.deployed_product || 'FieldOps Core Gateway'}
+          </span>
+        </div>
+      </td>
+
+      <td className={`px-6 whitespace-nowrap text-xs text-slate-600 ${viewMode === 'table-compact' ? 'py-2' : 'py-4'}`}>
+        {d.account_owner ? (
+          <div className="flex items-center space-x-1.5">
+            <User className="w-3.5 h-3.5 text-slate-400" />
+            <span className="font-medium text-slate-800">{d.account_owner}</span>
+          </div>
+        ) : (
+          <span className="text-slate-400">—</span>
+        )}
+      </td>
+
+      <td className={`px-6 whitespace-nowrap ${viewMode === 'table-compact' ? 'py-2' : 'py-4'}`}>
+        <span className="inline-flex items-center space-x-1 text-xs px-2.5 py-1 rounded-md bg-slate-100 font-medium text-slate-700 border border-slate-200">
+          <Layers className="w-3 h-3 text-slate-500" />
+          <span>{d.deployment_type}</span>
+        </span>
+      </td>
+
+      <td className={`px-6 whitespace-nowrap ${viewMode === 'table-compact' ? 'py-2' : 'py-4'}`}>
+        {renderStatusBadge(d)}
+      </td>
+
+      <td className={`px-6 whitespace-nowrap text-xs text-slate-500 ${viewMode === 'table-compact' ? 'py-2' : 'py-4'}`}>
+        <div className="flex items-center space-x-1.5">
+          <Calendar className="w-3.5 h-3.5 text-slate-400" />
+          <span>
+            {d.deployment_date 
+              ? formatDate(d.deployment_date)
+              : formatDate(d.created_at)}
+          </span>
+        </div>
+      </td>
+
+      <td className={`px-6 whitespace-nowrap text-right text-xs font-medium ${viewMode === 'table-compact' ? 'py-2' : 'py-4'}`}>
+        <div className="flex items-center justify-end space-x-2">
+          <Link
+            to={`/deployments/${d.id}`}
+            className="inline-flex items-center space-x-1 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md transition-colors"
+          >
+            <span>View</span>
+            <ExternalLink className="w-3 h-3 text-slate-500" />
+          </Link>
+          {renderActions(d)}
+        </div>
+      </td>
+    </tr>
+  );
+
+  const renderActions = (d: DeploymentData) => (
+    <div className="relative inline-block text-left">
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpenMenuId(prev => prev === d.id ? null : d.id!);
+        }}
+        className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-md transition-colors cursor-pointer border border-transparent hover:border-slate-200"
+        title="Actions"
+      >
+        <MoreVertical className="w-4 h-4" />
+      </button>
+
+      {openMenuId === d.id && (
+        <div 
+          onClick={(e) => e.stopPropagation()}
+          className="absolute right-0 mt-1 w-44 rounded-lg bg-white shadow-lg border border-slate-200 py-1 z-30 animate-in fade-in zoom-in-95 duration-100 text-left"
+        >
+          <button
+            type="button"
+            onClick={() => {
+              setOpenMenuId(null);
+              setEditingDeployment(d);
+            }}
+            className="w-full text-left px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 flex items-center space-x-2 cursor-pointer"
+          >
+            <Pencil className="w-3.5 h-3.5 text-slate-500" />
+            <span>Edit Deployment</span>
+          </button>
+          <button
+            type="button"
+            disabled={deletingId === d.id}
+            onClick={() => {
+              setOpenMenuId(null);
+              d.id && handleDelete(d.id, d.customer_name);
+            }}
+            className="w-full text-left px-3.5 py-2 text-xs font-medium text-red-600 hover:bg-red-50 flex items-center space-x-2 cursor-pointer border-t border-slate-100 disabled:opacity-50"
+          >
+            <Trash2 className="w-3.5 h-3.5 text-red-500" />
+            <span>{deletingId === d.id ? 'Deleting...' : 'Delete Deployment'}</span>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
       {/* Top Header */}
@@ -164,6 +464,7 @@ export const DeploymentsPage = () => {
 
         {/* Dropdown Filters */}
         <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+          <ViewToggle viewMode={viewMode} setViewMode={setViewMode} />
           <div className="flex items-center space-x-2 text-xs text-slate-500">
             <Filter className="w-3.5 h-3.5" />
             <span>Filter:</span>
@@ -222,225 +523,42 @@ export const DeploymentsPage = () => {
             </button>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-200">
-              <thead className="bg-slate-50 text-slate-600">
-                <tr>
-                  <th className="px-6 py-3.5 text-left text-xs font-semibold uppercase tracking-wider">Company / Customer</th>
-                  <th className="px-6 py-3.5 text-left text-xs font-semibold uppercase tracking-wider">Location</th>
-                  <th className="px-6 py-3.5 text-left text-xs font-semibold uppercase tracking-wider">Deployed Product</th>
-                  <th className="px-6 py-3.5 text-left text-xs font-semibold uppercase tracking-wider">Account Owner</th>
-                  <th className="px-6 py-3.5 text-left text-xs font-semibold uppercase tracking-wider">Type</th>
-                  <th className="px-6 py-3.5 text-left text-xs font-semibold uppercase tracking-wider">Status</th>
-                  <th className="px-6 py-3.5 text-left text-xs font-semibold uppercase tracking-wider">Date</th>
-                  <th className="px-6 py-3.5 text-right text-xs font-semibold uppercase tracking-wider">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 bg-white">
-                {filteredDeployments.map(d => (
-                  <tr key={d.id} className="hover:bg-slate-50/70 transition-colors">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center space-x-3">
-                        <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-700 border border-blue-100 flex items-center justify-center font-bold text-sm">
-                          {d.customer_name ? d.customer_name.charAt(0).toUpperCase() : 'C'}
-                        </div>
-                        <div>
-                          <Link 
-                            to={`/deployments/${d.id}`}
-                            className="font-semibold text-sm text-slate-900 hover:text-blue-600 transition-colors block"
-                          >
-                            {d.customer_name}
-                          </Link>
-                          {d.internal_group_name && (
-                            <span className="text-xs text-slate-400 font-mono">
-                              {d.internal_group_name}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </td>
-
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center space-x-1.5 text-sm text-slate-600">
-                        <MapPin className="w-3.5 h-3.5 text-slate-400" />
-                        <span>{d.location}</span>
-                      </div>
-                    </td>
-
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center space-x-2">
-                        <span className="w-6 h-6 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 flex items-center justify-center shrink-0">
-                          <Package className="w-3.5 h-3.5" />
-                        </span>
-                        <span className="text-xs font-bold text-slate-800">
-                          {d.deployed_product || 'FieldOps Core Gateway'}
-                        </span>
-                      </div>
-                    </td>
-
-                    <td className="px-6 py-4 whitespace-nowrap text-xs text-slate-600">
-                      {d.account_owner ? (
-                        <div className="flex items-center space-x-1.5">
-                          <User className="w-3.5 h-3.5 text-slate-400" />
-                          <span className="font-medium text-slate-800">{d.account_owner}</span>
-                        </div>
-                      ) : (
-                        <span className="text-slate-400">—</span>
-                      )}
-                    </td>
-
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="inline-flex items-center space-x-1 text-xs px-2.5 py-1 rounded-md bg-slate-100 font-medium text-slate-700 border border-slate-200">
-                        <Layers className="w-3 h-3 text-slate-500" />
-                        <span>{d.deployment_type}</span>
-                      </span>
-                    </td>
-
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex text-xs px-2.5 py-0.5 rounded-full font-medium border ${
-                        (() => {
-                          if (!d.stage_statuses || Object.keys(d.stage_statuses).length === 0) {
-                            return getStatusBadge(d.pre_poc_status || 'Planning');
-                          }
-                          const isPoc = d.deployment_type === 'POC';
-                          const stages = isPoc ? ['Initiated', 'Box allocated', 'Box prepared', 'Pre-POC Meeting Done', 'Deployment pending', 'Deployment in progress', 'Deployment completed', 'Policy Tuning', 'Pre-Sign off meeting', 'Sign off documentation sent', 'Post POC Meeting'] : ['Initiated', 'Kick Off Meeting Done', 'Box Allocated', 'Box Prepared', 'Preparing UAT/FAT/Documentation', 'Deployment Date Scheduled', 'Deployment in progress', 'Deployment completed', 'UAT/FAT Completed', 'Signed-off'];
-                          
-                          let currentStage = stages[0];
-                          let currentState = 'Pending';
-                          let allComplete = true;
-                          
-                          for (const s of stages) {
-                            const val = (d.stage_statuses[s] || '').toLowerCase();
-                            if (!['complete', 'done', 'completed'].includes(val)) {
-                              allComplete = false;
-                            }
-                          }
-                          
-                          if (allComplete) return getStatusBadge('completed');
-
-                          for (const s of stages) {
-                            const val = (d.stage_statuses[s] || '').toLowerCase();
-                            if (['complete', 'done', 'completed'].includes(val)) {
-                              currentStage = s;
-                              currentState = 'Complete';
-                            } else if (['pending', 'in progress', 'in_progress'].includes(val)) {
-                              currentStage = s;
-                              currentState = 'In Progress';
-                              break;
-                            } else {
-                              currentStage = s;
-                              currentState = 'Pending';
-                              break;
-                            }
-                          }
-                          
-                          return getStageColor(currentStage, currentState);
-                        })()
-                      }`}>
-                        {(() => {
-                          if (!d.stage_statuses || Object.keys(d.stage_statuses).length === 0) {
-                            return d.pre_poc_status || 'Planning';
-                          }
-                          const isPoc = d.deployment_type === 'POC';
-                          const stages = isPoc ? ['Initiated', 'Box allocated', 'Box prepared', 'Pre-POC Meeting Done', 'Deployment pending', 'Deployment in progress', 'Deployment completed', 'Policy Tuning', 'Pre-Sign off meeting', 'Sign off documentation sent', 'Post POC Meeting'] : ['Initiated', 'Kick Off Meeting Done', 'Box Allocated', 'Box Prepared', 'Preparing UAT/FAT/Documentation', 'Deployment Date Scheduled', 'Deployment in progress', 'Deployment completed', 'UAT/FAT Completed', 'Signed-off'];
-                          
-                          let currentStage = stages[0];
-                          let currentState = 'Pending';
-                          
-                          for (const s of stages) {
-                            const val = (d.stage_statuses[s] || '').toLowerCase();
-                            if (['complete', 'done', 'completed'].includes(val)) {
-                              currentStage = s;
-                              currentState = 'Complete';
-                            } else if (['pending', 'in progress', 'in_progress'].includes(val)) {
-                              currentStage = s;
-                              currentState = 'In Progress';
-                              break; // First pending
-                            } else {
-                              currentStage = s;
-                              currentState = 'Pending';
-                              break; // First not started
-                            }
-                          }
-                          
-                          return `${currentStage}: ${currentState}`;
-                        })()}
-                      </span>
-                    </td>
-
-                    <td className="px-6 py-4 whitespace-nowrap text-xs text-slate-500">
-                      <div className="flex items-center space-x-1.5">
-                        <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                        <span>
-                          {d.deployment_date 
-                            ? formatDate(d.deployment_date)
-                            : formatDate(d.created_at)}
-                        </span>
-                      </div>
-                    </td>
-
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-xs font-medium">
-                      <div className="flex items-center justify-end space-x-2">
-                        <Link
-                          to={`/deployments/${d.id}`}
-                          className="inline-flex items-center space-x-1 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md transition-colors"
-                        >
-                          <span>View</span>
-                          <ExternalLink className="w-3 h-3 text-slate-500" />
-                        </Link>
-
-                        <div className="relative inline-block text-left">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setOpenMenuId(prev => prev === d.id ? null : d.id!);
-                            }}
-                            className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-md transition-colors cursor-pointer border border-transparent hover:border-slate-200"
-                            title="Actions"
-                          >
-                            <MoreVertical className="w-4 h-4" />
-                          </button>
-
-                          {openMenuId === d.id && (
-                            <div 
-                              onClick={(e) => e.stopPropagation()}
-                              className="absolute right-0 mt-1 w-44 rounded-lg bg-white shadow-lg border border-slate-200 py-1 z-30 animate-in fade-in zoom-in-95 duration-100 text-left"
-                            >
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setOpenMenuId(null);
-                                  setEditingDeployment(d);
-                                }}
-                                className="w-full text-left px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 flex items-center space-x-2 cursor-pointer"
-                              >
-                                <Pencil className="w-3.5 h-3.5 text-slate-500" />
-                                <span>Edit Deployment</span>
-                              </button>
-                              <button
-                                type="button"
-                                disabled={deletingId === d.id}
-                                onClick={() => {
-                                  setOpenMenuId(null);
-                                  d.id && handleDelete(d.id, d.customer_name);
-                                }}
-                                className="w-full text-left px-3.5 py-2 text-xs font-medium text-red-600 hover:bg-red-50 flex items-center space-x-2 cursor-pointer border-t border-slate-100 disabled:opacity-50"
-                              >
-                                <Trash2 className="w-3.5 h-3.5 text-red-500" />
-                                <span>{deletingId === d.id ? 'Deleting...' : 'Delete Deployment'}</span>
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        <>
+          {viewMode === 'grid' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {filteredDeployments.map(renderGridCard)}
+            </div>
+          )}
+          {viewMode === 'list' && (
+            <div className="flex flex-col gap-4">
+              {filteredDeployments.map(renderListCard)}
+            </div>
+          )}
+          {(viewMode === 'table' || viewMode === 'table-compact') && (
+            <div className="bg-white rounded-xl border border-slate-200/80 shadow-xs overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-slate-200">
+                  <thead className="bg-slate-50 text-slate-600">
+                    <tr>
+                      <th className={`px-6 text-left text-xs font-semibold uppercase tracking-wider ${viewMode === 'table-compact' ? 'py-2' : 'py-3.5'}`}>Company / Customer</th>
+                      <th className={`px-6 text-left text-xs font-semibold uppercase tracking-wider ${viewMode === 'table-compact' ? 'py-2' : 'py-3.5'}`}>Location</th>
+                      <th className={`px-6 text-left text-xs font-semibold uppercase tracking-wider ${viewMode === 'table-compact' ? 'py-2' : 'py-3.5'}`}>Deployed Product</th>
+                      <th className={`px-6 text-left text-xs font-semibold uppercase tracking-wider ${viewMode === 'table-compact' ? 'py-2' : 'py-3.5'}`}>Account Owner</th>
+                      <th className={`px-6 text-left text-xs font-semibold uppercase tracking-wider ${viewMode === 'table-compact' ? 'py-2' : 'py-3.5'}`}>Type</th>
+                      <th className={`px-6 text-left text-xs font-semibold uppercase tracking-wider ${viewMode === 'table-compact' ? 'py-2' : 'py-3.5'}`}>Status</th>
+                      <th className={`px-6 text-left text-xs font-semibold uppercase tracking-wider ${viewMode === 'table-compact' ? 'py-2' : 'py-3.5'}`}>Date</th>
+                      <th className={`px-6 text-right text-xs font-semibold uppercase tracking-wider ${viewMode === 'table-compact' ? 'py-2' : 'py-3.5'}`}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 bg-white">
+                    {filteredDeployments.map(d => renderTableRow(d))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </>
+      )}
       </div>
 
       {/* New Deployment Modal */}
