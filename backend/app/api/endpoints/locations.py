@@ -148,6 +148,48 @@ async def update_location(
         updated_at=loc.updated_at
     )
 
+@router.post("/{id}/merge")
+async def merge_location(
+    id: UUID,
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    target_id_str = payload.get("target_location_id")
+    if not target_id_str:
+        raise HTTPException(400, "Missing target_location_id")
+    
+    try:
+        target_id = UUID(target_id_str)
+    except Exception:
+        raise HTTPException(400, "Invalid target_location_id format")
+
+    if id == target_id:
+        raise HTTPException(400, "Cannot merge a location into itself")
+
+    source_location = db.query(Location).filter(Location.id == id, Location.deleted_at == None).first()
+    if not source_location:
+        raise HTTPException(404, "Source location not found")
+        
+    target_location = db.query(Location).filter(Location.id == target_id, Location.deleted_at == None).first()
+    if not target_location:
+        raise HTTPException(404, "Target location not found")
+
+    # 1. Re-assign Deployments
+    db.query(Deployment).filter(Deployment.location_id == id).update(
+        {
+            "location_id": target_id,
+            "location": target_location.name
+        }, 
+        synchronize_session=False
+    )
+
+    # 2. Soft-delete the source location
+    source_location.deleted_at = datetime.utcnow()
+    db.commit()
+
+    return {"status": "success", "message": f"Merged into {target_location.name}", "target_id": str(target_location.id)}
+
 @router.delete("/{id}", status_code=204)
 async def delete_location(
     id: UUID,

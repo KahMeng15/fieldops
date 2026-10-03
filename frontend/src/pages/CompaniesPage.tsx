@@ -12,11 +12,13 @@ import {
   ChevronRight,
   Trash2,
   Pencil,
-  MoreVertical
+  MoreVertical,
+  GitMerge
 } from 'lucide-react';
 import { getCompanies, deleteCompany, type Company } from '../api';
 import NewCompanyModal from '../components/NewCompanyModal';
 import EditCompanyModal from '../components/EditCompanyModal';
+import MergeCompanyModal from '../components/MergeCompanyModal';
 
 export const CompaniesPage: React.FC = () => {
   const navigate = useNavigate();
@@ -26,6 +28,7 @@ export const CompaniesPage: React.FC = () => {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [isCompanyModalOpen, setIsCompanyModalOpen] = useState(false);
   const [editingCompany, setEditingCompany] = useState<Company | null>(null);
+  const [mergingCompany, setMergingCompany] = useState<Company | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
   const fetchCompanies = async () => {
@@ -189,6 +192,19 @@ export const CompaniesPage: React.FC = () => {
                           type="button"
                           onClick={() => {
                             setOpenMenuId(null);
+                            setMergingCompany(company);
+                          }}
+                          className="w-full text-left px-3.5 py-2 text-xs font-medium text-orange-600 hover:bg-orange-50 flex items-center space-x-2 cursor-pointer border-t border-slate-100"
+                        >
+                          <GitMerge className="w-3.5 h-3.5 text-orange-500" />
+                          <span>Merge Company</span>
+                        </button>
+
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setOpenMenuId(null);
                             handleDeleteCompany(company.id, company.name);
                           }}
                           disabled={deletingId === company.id}
@@ -289,6 +305,18 @@ export const CompaniesPage: React.FC = () => {
           setCompanies(prev => prev.map(c => c.id === updated.id ? { ...c, ...updated } : c));
         }}
       />
+
+      {mergingCompany && (
+        <MergeCompanyModal
+          isOpen={Boolean(mergingCompany)}
+          sourceCompany={mergingCompany}
+          onClose={() => setMergingCompany(null)}
+          onSuccess={() => {
+            setMergingCompany(null);
+            fetchCompanies();
+          }}
+        />
+      )}
     </div>
   );
 };

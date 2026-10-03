@@ -1262,7 +1262,7 @@ export const DeploymentDetailPage = () => {
                 </div>
                 <div
                   onClick={async () => {
-                    const nextState = !deployment.collected;
+                    const nextState = deployment.collected === true ? false : deployment.collected === false ? null : true;
                     await handleSaveInlineEdit('collected', nextState);
                   }}
                   className="group flex items-center justify-between gap-2 p-1.5 -m-1.5 rounded-lg hover:bg-slate-50 border border-transparent hover:border-slate-200/80 cursor-pointer transition-all"
@@ -1270,16 +1270,20 @@ export const DeploymentDetailPage = () => {
                 >
                   <div className="flex items-center space-x-2">
                     <span className={`inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-md text-xs font-semibold shadow-2xs transition-all ${
-                      deployment.collected
+                      deployment.collected === true
                         ? 'bg-emerald-50 text-emerald-700 border border-emerald-300 hover:bg-emerald-100'
-                        : 'bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100'
+                        : deployment.collected === false
+                        ? 'bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100'
+                        : 'bg-slate-50 text-slate-500 border border-slate-200 hover:bg-slate-100'
                     }`}>
-                      {deployment.collected ? (
+                      {deployment.collected === true ? (
                         <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                      ) : (
+                      ) : deployment.collected === false ? (
                         <X className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                      ) : (
+                        <span className="w-3.5 h-3.5 flex items-center justify-center font-bold">-</span>
                       )}
-                      <span>{deployment.collected ? 'Yes (Collected)' : 'No (Pending Collection)'}</span>
+                      <span>{deployment.collected === true ? 'Yes (Collected)' : deployment.collected === false ? 'No (Pending)' : 'N/A (Not Applicable)'}</span>
                     </span>
                     <span className="text-[11px] text-slate-400 italic font-normal opacity-0 group-hover:opacity-100 transition-opacity">
                       (Click to toggle)

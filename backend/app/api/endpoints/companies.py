@@ -253,6 +253,87 @@ async def update_company(
 
     return CompanyResponse(**resp_dict)
 
+@router.post("/{id}/merge")
+async def merge_company(
+    id: UUID,
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    target_id_str = payload.get("target_company_id")
+    if not target_id_str:
+        raise HTTPException(400, "Missing target_company_id")
+    
+    try:
+        target_id = UUID(target_id_str)
+    except Exception:
+        raise HTTPException(400, "Invalid target_company_id format")
+
+    if id == target_id:
+        raise HTTPException(400, "Cannot merge a company into itself")
+
+    source_company = db.query(Company).filter(Company.id == id, Company.deleted_at == None).first()
+    if not source_company:
+        raise HTTPException(404, "Source company not found")
+        
+    target_company = db.query(Company).filter(Company.id == target_id, Company.deleted_at == None).first()
+    if not target_company:
+        raise HTTPException(404, "Target company not found")
+
+    # 1. Handle Locations (Auto-merge identically named ones)
+    source_locs = db.query(Location).filter(Location.company_id == id, Location.deleted_at == None).all()
+    target_locs = db.query(Location).filter(Location.company_id == target_id, Location.deleted_at == None).all()
+    target_loc_map = {loc.name.lower().strip(): loc for loc in target_locs if loc.name}
+
+    for s_loc in source_locs:
+        s_name_lower = s_loc.name.lower().strip() if s_loc.name else ""
+        if s_name_lower and s_name_lower in target_loc_map:
+            # Target already has this location! 
+            t_loc = target_loc_map[s_name_lower]
+            # Move deployments from s_loc to t_loc
+            db.query(Deployment).filter(Deployment.location_id == s_loc.id).update(
+                {
+                    "location_id": t_loc.id,
+                    "location": t_loc.name,
+                    "company_id": target_id,
+                    "customer_name": target_company.name
+                },
+                synchronize_session=False
+            )
+            # Soft delete the source location so it doesn't duplicate
+            s_loc.deleted_at = datetime.utcnow()
+        else:
+            # Safe to move this location directly to the target company
+            s_loc.company_id = target_id
+            db.query(Deployment).filter(Deployment.location_id == s_loc.id).update(
+                {
+                    "company_id": target_id,
+                    "customer_name": target_company.name
+                },
+                synchronize_session=False
+            )
+
+    # 2. Move any remaining deployments that might not have a location_id!
+    db.query(Deployment).filter(Deployment.company_id == id).update(
+        {
+            "company_id": target_id,
+            "customer_name": target_company.name
+        }, 
+        synchronize_session=False
+    )
+
+    # 3. Re-assign Contacts
+    db.query(CompanyContact).filter(CompanyContact.company_id == id).update(
+        {"company_id": target_id}, synchronize_session=False
+    )
+
+    # 4. Soft-delete the source company
+    source_company.deleted_at = datetime.utcnow()
+    db.commit()
+
+    return {"status": "success", "message": f"Merged into {target_company.name}", "target_id": str(target_company.id)}
+
+
 @router.delete("/{id}", status_code=204)
 async def delete_company(
     id: UUID,

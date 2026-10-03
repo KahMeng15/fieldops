@@ -17,6 +17,7 @@ import {
   AlertCircle,
   Trash2,
   Pencil,
+  GitMerge,
   MoreVertical,
   ChevronDown,
   ChevronRight
@@ -25,7 +26,7 @@ import {
   getCompany, 
   deleteCompany,
   deleteLocation,
-  getLocationDeployments, 
+  getDeployments, 
   deleteCompanyContact,
   getCompanyFieldSettings,
   type Company, 
@@ -39,6 +40,8 @@ import EditLocationModal from '../components/EditLocationModal';
 import EditCompanyModal from '../components/EditCompanyModal';
 import NewDeploymentModal from '../components/NewDeploymentModal';
 import ContactModal from '../components/ContactModal';
+import MergeCompanyModal from '../components/MergeCompanyModal';
+import MergeLocationModal from '../components/MergeLocationModal';
 
 export const CompanyDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -50,6 +53,7 @@ export const CompanyDetailPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingLocation, setEditingLocation] = useState<CompanyLocation | null>(null);
+  const [mergingLocation, setMergingLocation] = useState<CompanyLocation | null>(null);
   const [collapsedLocations, setCollapsedLocations] = useState<Record<string, boolean>>({});
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
@@ -60,6 +64,7 @@ export const CompanyDetailPage: React.FC = () => {
   // Modals
   const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
+  const [isMergeModalOpen, setIsMergeModalOpen] = useState(false);
   const [editingContact, setEditingContact] = useState<CompanyContact | null>(null);
   const [deploymentModalLocation, setDeploymentModalLocation] = useState<CompanyLocation | null>(null);
 
@@ -77,11 +82,21 @@ export const CompanyDetailPage: React.FC = () => {
         setCompanySettings(settings);
       }
 
-      // Fetch deployment records for each location
-      if (comp.locations && comp.locations.length > 0) {
-        for (const loc of comp.locations) {
-          fetchDeploymentsForLocation(loc.id);
-        }
+      // Fetch all deployment records for the company at once
+      setLoadingDeployments(prev => ({ ...prev, 'all': true }));
+      try {
+        const deps = await getDeployments({ company_id: id });
+        const grouped: Record<string, any[]> = {};
+        deps.forEach((dep: any) => {
+          const locId = dep.location_id || 'unassigned';
+          if (!grouped[locId]) grouped[locId] = [];
+          grouped[locId].push(dep);
+        });
+        setLocationDeployments(grouped);
+      } catch (err) {
+        console.error("Failed to load deployments for company", err);
+      } finally {
+        setLoadingDeployments(prev => ({ ...prev, 'all': false }));
       }
     } catch (err: any) {
       setError(err?.response?.data?.detail || 'Failed to load company details.');
@@ -90,17 +105,7 @@ export const CompanyDetailPage: React.FC = () => {
     }
   };
 
-  const fetchDeploymentsForLocation = async (locationId: string) => {
-    try {
-      setLoadingDeployments(prev => ({ ...prev, [locationId]: true }));
-      const deps = await getLocationDeployments(locationId);
-      setLocationDeployments(prev => ({ ...prev, [locationId]: deps || [] }));
-    } catch (err) {
-      console.error(`Failed to fetch deployments for location ${locationId}`, err);
-    } finally {
-      setLoadingDeployments(prev => ({ ...prev, [locationId]: false }));
-    }
-  };
+
 
   useEffect(() => {
     fetchCompanyData();
@@ -223,6 +228,18 @@ export const CompanyDetailPage: React.FC = () => {
   }
 
   const locations = company.locations || [];
+  
+  const renderLocations = [...locations];
+  if (locationDeployments['unassigned'] && locationDeployments['unassigned'].length > 0) {
+    renderLocations.push({
+      id: 'unassigned',
+      name: 'Unassigned / No Location',
+      address: 'Deployments imported without a specific location',
+      district: '',
+      state: '',
+      notes: ''
+    } as any);
+  }
   const contacts = company.contacts || [];
 
   return (
@@ -297,6 +314,17 @@ export const CompanyDetailPage: React.FC = () => {
                   >
                     <Pencil className="w-3.5 h-3.5 text-slate-500" />
                     <span>Edit Company</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOpenMenuId(null);
+                      setIsMergeModalOpen(true);
+                    }}
+                    className="w-full text-left px-3.5 py-2 text-xs font-medium text-orange-600 hover:bg-orange-50 flex items-center space-x-2 cursor-pointer border-t border-slate-100"
+                  >
+                    <GitMerge className="w-3.5 h-3.5 text-orange-500" />
+                    <span>Merge Company</span>
                   </button>
                   <button
                     type="button"
@@ -569,7 +597,7 @@ export const CompanyDetailPage: React.FC = () => {
           </div>
         ) : (
           <div className="space-y-6">
-            {locations.map((loc) => {
+            {renderLocations.map((loc) => {
               const deps = locationDeployments[loc.id] || [];
               const isLoadingDeps = loadingDeployments[loc.id];
               const isCollapsed = Boolean(collapsedLocations[loc.id]);
@@ -627,9 +655,11 @@ export const CompanyDetailPage: React.FC = () => {
                     </div>
 
                     <div className="flex items-center space-x-2 shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => setDeploymentModalLocation(loc)}
+                      {loc.id !== 'unassigned' && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => setDeploymentModalLocation(loc)}
                         className="flex items-center space-x-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-xs transition-all cursor-pointer"
                       >
                         <Plus className="w-3.5 h-3.5" />
@@ -670,6 +700,17 @@ export const CompanyDetailPage: React.FC = () => {
                               type="button"
                               onClick={() => {
                                 setOpenMenuId(null);
+                                setMergingLocation(loc);
+                              }}
+                              className="w-full text-left px-3.5 py-2 text-xs font-medium text-orange-600 hover:bg-orange-50 flex items-center space-x-2 cursor-pointer border-t border-slate-100"
+                            >
+                              <GitMerge className="w-3.5 h-3.5 text-orange-500" />
+                              <span>Merge Location</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setOpenMenuId(null);
                                 handleDeleteLocation(loc.id, loc.name);
                               }}
                               className="w-full text-left px-3.5 py-2 text-xs font-medium text-red-600 hover:bg-red-50 flex items-center space-x-2 cursor-pointer border-t border-slate-100"
@@ -680,6 +721,8 @@ export const CompanyDetailPage: React.FC = () => {
                           </div>
                         )}
                       </div>
+                        </>
+                      )}
                     </div>
                   </div>
 
@@ -860,7 +903,7 @@ export const CompanyDetailPage: React.FC = () => {
           defaultLocationName={deploymentModalLocation.name}
           onClose={() => setDeploymentModalLocation(null)}
           onSuccess={() => {
-            fetchDeploymentsForLocation(deploymentModalLocation.id);
+            
             fetchCompanyData();
           }}
         />
@@ -883,6 +926,30 @@ export const CompanyDetailPage: React.FC = () => {
           fetchCompanyData();
         }}
       />
+
+      {mergingLocation && (
+        <MergeLocationModal
+          isOpen={Boolean(mergingLocation)}
+          sourceLocation={mergingLocation}
+          allLocations={company.locations || []}
+          onClose={() => setMergingLocation(null)}
+          onSuccess={() => {
+            fetchCompanyData();
+          }}
+        />
+      )}
+
+      {company && (
+        <MergeCompanyModal
+          isOpen={isMergeModalOpen}
+          sourceCompany={company}
+          onClose={() => setIsMergeModalOpen(false)}
+          onSuccess={(targetId) => {
+            setIsMergeModalOpen(false);
+            navigate(`/companies/${targetId}`);
+          }}
+        />
+      )}
 
       {company && (
         <ContactModal

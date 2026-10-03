@@ -323,17 +323,35 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 text-slate-700">
-                        {previewData.preview_rows.slice(0, 3).map((row, i) => (
-                          <tr key={i} className="hover:bg-slate-50">
-                            <td className="p-2 border-r border-slate-200 font-semibold text-slate-900">
-                              {row[mappings.customer_name] || '-'}
-                            </td>
-                            <td className="p-2 border-r border-slate-200">
-                              {row[mappings.account_owner] || '-'}
-                            </td>
-                            <td className="p-2 border-r border-slate-200 font-medium text-blue-700">
-                              {row[mappings.product_1] || 'Default Gateway'}
-                            </td>
+                        {previewData.preview_rows.slice(0, 3).map((row, i) => {
+                          let displayCustomer = row[mappings.customer_name] || '';
+                          let displayProduct = row[mappings.product_1] || '';
+                          
+                          if (displayCustomer.includes('-')) {
+                            const parts = displayCustomer.split('-');
+                            if (!displayProduct) {
+                              displayProduct = parts[parts.length - 1].trim();
+                            }
+                            displayCustomer = parts.slice(0, -1).join('-').trim();
+                          } else if (!displayProduct && displayCustomer) {
+                            const parts = displayCustomer.split(' ');
+                            if (parts.length > 1 && parts[parts.length - 1] === parts[parts.length - 1].toUpperCase()) {
+                              displayProduct = parts[parts.length - 1];
+                              displayCustomer = parts.slice(0, -1).join(' ').trim();
+                            }
+                          }
+
+                          return (
+                            <tr key={i} className="hover:bg-slate-50">
+                              <td className="p-2 border-r border-slate-200 font-semibold text-slate-900">
+                                {displayCustomer || '-'}
+                              </td>
+                              <td className="p-2 border-r border-slate-200">
+                                {row[mappings.account_owner] || '-'}
+                              </td>
+                              <td className="p-2 border-r border-slate-200 font-medium text-blue-700">
+                                {displayProduct || '-'}
+                              </td>
                             <td className="p-2 border-r border-slate-200 text-slate-500 font-mono text-[11px]">
                               {row[mappings.deployment_date] || row[mappings.kickoff_date] || '-'}
                             </td>
@@ -344,7 +362,8 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                               {row[mappings.notes] || '-'}
                             </td>
                           </tr>
-                        ))}
+                        );
+                      })}
                       </tbody>
                     </table>
                   </div>

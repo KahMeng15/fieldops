@@ -956,6 +956,15 @@ async def execute_excel_import(
         "extra_item_options": set()
     }
 
+    # Preload settings to match case-insensitively
+    setting_cat = db.query(LookupCategory).filter_by(name="deployment_field_settings").first()
+    field_options_map = {}
+    if setting_cat and setting_cat.description:
+        data = json.loads(setting_cat.description)
+        for f in data.get("fields", []):
+            k = f.get("key")
+            field_options_map[k] = {str(opt).lower().strip(): opt for opt in f.get("options", [])}
+
     actual_db_cols = sync_orm_columns(db)
 
     EMPTY_PLACEHOLDERS = {"none", "n/a", "na", "null", "-", "nil", "n.a.", "n.a", "none.", "n/a."}
@@ -965,20 +974,51 @@ async def execute_excel_import(
             return True
         return val.strip().lower() in EMPTY_PLACEHOLDERS
 
+    def clean_string(val: str) -> str:
+        if not val:
+            return ""
+        return re.sub(r'\s+', ' ', str(val)).strip()
+
     def get_val(key: str, default_fallback: str = "") -> str:
-        override = defaults.get(key, "").strip() if defaults.get(key) else ""
+        override = clean_string(defaults.get(key, ""))
         if override and not is_placeholder(override):
-            return override
-        col = mapping.get(key)
-        v = r.get(col, "").strip() if col else ""
-        if is_placeholder(v):
-            v = ""
-        return v if v else default_fallback
+            v = override
+        else:
+            col = mapping.get(key)
+            v = clean_string(r.get(col, "")) if col else ""
+            if is_placeholder(v):
+                v = ""
+        
+        v = v if v else default_fallback
+
+        if v and key in field_options_map:
+            v_lower = v.lower()
+            if v_lower in field_options_map[key]:
+                return field_options_map[key][v_lower]
+            # Add to local map for subsequent rows in the same import
+            field_options_map[key][v_lower] = v
+
+        return v
 
     for idx, r in enumerate(rows, start=1):
         cust_name = get_val("customer_name")
         if not cust_name or is_placeholder(cust_name):
             continue
+
+        p1_name = get_val("product_1")
+        
+        # Extract product from customer_name if separated by dash or trailing uppercase
+        if "-" in cust_name:
+            parts = cust_name.split("-")
+            p1_extracted = parts[-1].strip()
+            cust_name = "-".join(parts[:-1]).strip()
+            if not p1_name and p1_extracted:
+                p1_name = p1_extracted
+        elif not p1_name:
+            parts = cust_name.split()
+            if len(parts) > 1 and parts[-1].isupper():
+                p1_name = parts[-1]
+                cust_name = " ".join(parts[:-1]).strip()
 
         # Find or create company
         comp = db.query(Company).filter(Company.name.ilike(cust_name), Company.deleted_at == None).first()
@@ -991,7 +1031,6 @@ async def execute_excel_import(
         # Products to create deployments for
         products_to_create = []
         
-        p1_name = get_val("product_1", "FieldOps Core Gateway")
         p1_qty_str = get_val("product_1_qty", "1")
         p1_qty = int(p1_qty_str) if p1_qty_str.isdigit() else 1
         
@@ -1013,7 +1052,19 @@ async def execute_excel_import(
                 addons.append({"name": an_val, "qty": aq_val})
 
         # Base fields
-        loc_name = get_val("location") or "undefined"
+        loc_name = get_val("location")
+        if not loc_name or is_placeholder(loc_name):
+            loc_name = "Undefined"
+            
+        loc = db.query(Location).filter(
+            Location.company_id == comp.id,
+            Location.name.ilike(loc_name),
+            Location.deleted_at == None
+        ).first()
+        if not loc:
+            loc = Location(company_id=comp.id, name=loc_name)
+            db.add(loc)
+            db.flush()
         
         # Base fields
         acc_owner = get_val("account_owner") or None
@@ -1039,7 +1090,9 @@ async def execute_excel_import(
         dev_st = get_val("device_status") or None
 
         collected_val = get_val("collected").lower()
-        collected_bool = collected_val in ["true", "1", "yes", "done", "physical"]
+        collected_bool = None
+        if collected_val and not is_placeholder(collected_val):
+            collected_bool = collected_val in ["true", "1", "yes", "done", "physical"]
 
         folder = get_val("deployment_folder") or None
         lead_eng = get_val("lead_engineer") or None
@@ -1069,17 +1122,6 @@ async def execute_excel_import(
             
         for item_info in products_to_create:
             if item_info["product"]: global_vals["deployed_product"].add(item_info["product"])
-
-        # Find or create location for the company
-        loc = db.query(Location).filter(
-            Location.company_id == comp.id,
-            Location.name.ilike(loc_name),
-            Location.deleted_at == None
-        ).first()
-        if not loc:
-            loc = Location(company_id=comp.id, name=loc_name)
-            db.add(loc)
-            db.flush()
 
         # Create deployments
         for item_info in products_to_create:
@@ -1142,9 +1184,12 @@ async def execute_excel_import(
             key = f.get("key")
             if key in global_vals and global_vals[key]:
                 opts = f.get("options", [])
+                opts_lower = {str(o).lower().strip() for o in opts}
                 for val in global_vals[key]:
-                    if val not in opts:
-                        opts.append(val)
+                    val_clean = clean_string(val)
+                    if val_clean.lower() not in opts_lower:
+                        opts.append(val_clean)
+                        opts_lower.add(val_clean.lower())
                         changed = True
                 f["options"] = opts
         if changed:

@@ -113,7 +113,7 @@ class DeploymentSchema(BaseModel):
     location: Optional[str] = None
     company_id: Optional[UUID] = None
     location_id: Optional[UUID] = None
-    deployed_product: Optional[str] = "FieldOps Core Gateway"
+    deployed_product: Optional[str] = None
     deployment_date: Optional[datetime] = None
     internal_group_name: Optional[str] = None
     account_owner: Optional[str] = None

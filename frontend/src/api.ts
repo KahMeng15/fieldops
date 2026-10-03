@@ -152,6 +152,11 @@ export const deleteCompany = async (id: string): Promise<void> => {
   await api.delete(`/companies/${id}`);
 };
 
+export const mergeCompany = async (id: string, target_company_id: string): Promise<{status: string, message: string, target_id: string}> => {
+  const { data } = await api.post(`/companies/${id}/merge`, { target_company_id });
+  return data;
+};
+
 export const getCompanyContacts = async (companyId: string): Promise<CompanyContact[]> => {
   const { data } = await api.get(`/companies/${companyId}/contacts`);
   return data;
@@ -228,6 +233,11 @@ export const updateLocation = async (id: string, location: Partial<CompanyLocati
 
 export const deleteLocation = async (id: string): Promise<void> => {
   await api.delete(`/locations/${id}`);
+};
+
+export const mergeLocation = async (id: string, target_location_id: string): Promise<{status: string, message: string, target_id: string}> => {
+  const { data } = await api.post(`/locations/${id}/merge`, { target_location_id });
+  return data;
 };
 
 export interface DeploymentData {
